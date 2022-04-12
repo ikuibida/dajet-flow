@@ -17,33 +17,35 @@ namespace DaJet.Flow
         }
         public IPipeline Build(PipelineOptions options)
         {
-            // 1.0 Create consumer data mapper
-            Type mapperType = GetTypeByName(options.Source.DataMapper);
-            DatabaseOptions databaseOptions = CreateDatabaseOptions(options.Source.Type, options.Source.Options);
-            object mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
+            object consumer = null;
+            if (options.Source.Type == "SqlServer" ||
+                options.Source.Type == "PostgreSQL")
+            {
+                consumer = CreateDatabaseConsumer(in options);
+            }
+            else if (options.Source.Type == "RabbitMQ")
+            {
+                Type serviceType = GetTypeByName(options.Source.Consumer);
+                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, options.Source.Options);
+            }
 
-            // 1.1 Create consumer
-            Type genericType = GetTypeByName(options.Source.Consumer);
-            Type messageType = GetTypeByName(options.Source.Message);
-            Type serviceType = genericType.MakeGenericType(messageType);
-            object consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
-
-            // 2.0 Create producer data mapper
-            mapperType = GetTypeByName(options.Target.DataMapper);
-            databaseOptions = CreateDatabaseOptions(options.Target.Type, options.Target.Options);
-            mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
-
-            // 2.1 Create producer
-            genericType = GetTypeByName(options.Target.Producer);
-            messageType = GetTypeByName(options.Target.Message);
-            serviceType = genericType.MakeGenericType(messageType);
-            object producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
+            object producer = null;
+            if (options.Target.Type == "SqlServer" ||
+                options.Target.Type == "PostgreSQL")
+            {
+                producer = CreateDatabaseProducer(in options);
+            }
+            else if (options.Target.Type == "RabbitMQ")
+            {
+                Type serviceType = GetTypeByName(options.Target.Producer);
+                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, options.Target.Options);
+            }
 
             // 3.0 Create handlers
             List<object> handlers = new List<object>();
             foreach (string handlerName in options.Handlers)
             {
-                serviceType = GetTypeByName(handlerName);
+                Type serviceType = GetTypeByName(handlerName);
                 object handler = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
                 handlers.Add(handler);
             }
@@ -83,6 +85,37 @@ namespace DaJet.Flow
             }
 
             return null;
+        }
+
+        private object CreateDatabaseConsumer(in PipelineOptions options)
+        {
+            // 1.0 Create consumer data mapper
+            Type mapperType = GetTypeByName(options.Source.DataMapper);
+            DatabaseOptions databaseOptions = CreateDatabaseOptions(options.Source.Type, options.Source.Options);
+            object mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
+
+            // 1.1 Create consumer
+            Type genericType = GetTypeByName(options.Source.Consumer);
+            Type messageType = GetTypeByName(options.Source.Message);
+            Type serviceType = genericType.MakeGenericType(messageType);
+            object consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
+
+            return consumer;
+        }
+        private object CreateDatabaseProducer(in PipelineOptions options)
+        {
+            // 2.0 Create producer data mapper
+            Type mapperType = GetTypeByName(options.Target.DataMapper);
+            DatabaseOptions databaseOptions = CreateDatabaseOptions(options.Target.Type, options.Target.Options);
+            object mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
+
+            // 2.1 Create producer
+            Type genericType = GetTypeByName(options.Target.Producer);
+            Type messageType = GetTypeByName(options.Target.Message);
+            Type serviceType = genericType.MakeGenericType(messageType);
+            object producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
+
+            return producer;
         }
         private static DatabaseOptions CreateDatabaseOptions(string provider, Dictionary<string, string> settings)
         {

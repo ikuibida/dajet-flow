@@ -11,7 +11,7 @@
     public sealed class Pipeline<TSource> : IPipeline
     {
         private readonly ISource<TSource> _source;
-        private readonly CancellationTokenSource _token = new();
+        private readonly CancellationTokenSource _cancellation = new();
         public Pipeline(string name, ISource<TSource> source)
         {
             Name = name;
@@ -20,7 +20,10 @@
         public string Name { get; private set; }
         public void Execute()
         {
-            _source.Pump(_token.Token);
+            using (_source)
+            {
+                _source.Pump(_cancellation.Token);
+            }
         }
     }
 }

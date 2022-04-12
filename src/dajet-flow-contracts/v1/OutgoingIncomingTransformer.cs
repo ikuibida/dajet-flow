@@ -1,5 +1,4 @@
-﻿using DaJet.Flow;
-using DaJet.Flow.Contracts.V1;
+﻿using DaJet.Flow.Contracts.V1;
 using System.Text.Json;
 
 namespace DaJet.Flow.Contracts.Transformers.V1

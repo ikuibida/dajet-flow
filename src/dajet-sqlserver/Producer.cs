@@ -11,7 +11,7 @@ namespace DaJet.SqlServer
         [ActivatorUtilitiesConstructor] public Producer(DatabaseOptions options, IDataMapper<TMessage> mapper)
         {
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
-            _options = options ?? throw new ArgumentNullException(nameof(options)); ;
+            _options = options ?? throw new ArgumentNullException(nameof(options));
         }
         protected override void _Process(in TMessage message)
         {

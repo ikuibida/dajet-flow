@@ -56,11 +56,14 @@ namespace DaJet.Flow.App
 
             services.AddSingleton<PipelineBuilder>();
             services.AddTransient(typeof(Pipeline<>));
+
+            services.AddTransient(typeof(RabbitMQ.Producer));
             services.AddTransient(typeof(SqlServer.Consumer<>));
             services.AddTransient(typeof(SqlServer.Producer<>));
             services.AddTransient(typeof(PostgreSQL.Consumer<>));
             services.AddTransient(typeof(PostgreSQL.Producer<>));
 
+            services.AddSingleton<RabbitMQ.DbToRmqTransformer>();
             services.AddSingleton<Contracts.Transformers.V1.OutgoingIncomingTransformer>();
 
             foreach (PipelineOptions options in settings.Pipelines)

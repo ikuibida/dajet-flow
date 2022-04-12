@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\dajet-flow\dajet-flow.csproj" />
     <ProjectReference Include="..\dajet-postgresql\dajet-postgresql.csproj" />
+    <ProjectReference Include="..\dajet-rabbitmq\dajet-rabbitmq.csproj" />
     <ProjectReference Include="..\dajet-sqlserver\dajet-sqlserver.csproj" />
   </ItemGroup>
 

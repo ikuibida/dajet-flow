@@ -11,7 +11,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dajet-flow", "dajet-flow\da
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dajet-flow-contracts", "dajet-flow-contracts\dajet-flow-contracts.csproj", "{FD8FB308-73E0-49F4-B65B-1CE58C2EFB47}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dajet-postgresql", "dajet-postgresql\dajet-postgresql.csproj", "{6A3ED90F-98D4-4B77-9579-591C32902F9C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dajet-postgresql", "dajet-postgresql\dajet-postgresql.csproj", "{6A3ED90F-98D4-4B77-9579-591C32902F9C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dajet-rabbitmq", "dajet-rabbitmq\dajet-rabbitmq.csproj", "{06707F24-0277-4251-815B-F52C07A695E4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -39,6 +41,10 @@ Global
 		{6A3ED90F-98D4-4B77-9579-591C32902F9C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6A3ED90F-98D4-4B77-9579-591C32902F9C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{6A3ED90F-98D4-4B77-9579-591C32902F9C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{06707F24-0277-4251-815B-F52C07A695E4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{06707F24-0277-4251-815B-F52C07A695E4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{06707F24-0277-4251-815B-F52C07A695E4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{06707F24-0277-4251-815B-F52C07A695E4}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
