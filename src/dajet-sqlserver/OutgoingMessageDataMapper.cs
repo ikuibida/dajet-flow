@@ -1,11 +1,11 @@
 ﻿using DaJet.Flow;
-using DaJet.Flow.Contracts.V1;
+using DaJet.Flow.Contracts;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
 using System.Text;
 
-namespace DaJet.SqlServer.DataMappers.V1
+namespace DaJet.SqlServer.DataMappers
 {
     public sealed class OutgoingMessageDataMapper : IDataMapper<OutgoingMessage>
     {
@@ -32,43 +32,47 @@ namespace DaJet.SqlServer.DataMappers.V1
         }
         public void MapDataToMessage(in DbDataReader reader, in OutgoingMessage message)
         {
-            message.MessageNumber = reader.IsDBNull("MessageNumber") ? 0L : (long)reader.GetDecimal("MessageNumber");
-            message.Headers = reader.IsDBNull("Headers") ? string.Empty : reader.GetString("Headers");
-            message.MessageType = reader.IsDBNull("MessageType") ? string.Empty : reader.GetString("MessageType");
-            message.MessageBody = reader.IsDBNull("MessageBody") ? string.Empty : reader.GetString("MessageBody");
+            message.MessageNumber = reader.IsDBNull("МоментВремени") ? 0L : (long)reader.GetDecimal("МоментВремени");
+            message.Uuid = reader.IsDBNull("Идентификатор") ? Guid.Empty : new Guid((byte[])reader["Идентификатор"]);
+            message.Sender = reader.IsDBNull("Отправитель") ? string.Empty : reader.GetString("Отправитель");
+            message.Recipients = reader.IsDBNull("Получатели") ? string.Empty : reader.GetString("Получатели");
+            message.Headers = reader.IsDBNull("Заголовки") ? string.Empty : reader.GetString("Заголовки");
+            message.MessageType = reader.IsDBNull("ТипСообщения") ? string.Empty : reader.GetString("ТипСообщения");
+            message.MessageBody = reader.IsDBNull("ТелоСообщения") ? string.Empty : reader.GetString("ТелоСообщения");
+            message.DateTimeStamp = reader.IsDBNull("ДатаВремя") ? DateTime.MinValue : reader.GetDateTime("ДатаВремя");
+            message.Reference = reader.IsDBNull("Ссылка") ? Guid.Empty : new Guid((byte[])reader["Ссылка"]);
         }
         private string BuildSelectScript()
         {
+            //string script =
+            //    "WITH cte AS (SELECT TOP (@MessageCount) " +
+            //    "{НомерСообщения} AS [MessageNumber], {Заголовки} AS [Headers], " +
+            //    "{ТипСообщения} AS [MessageType], {ТелоСообщения} AS [MessageBody] " +
+            //    "FROM {TABLE_NAME} WITH (ROWLOCK, READPAST) " +
+            //    "ORDER BY {НомерСообщения} ASC) " +
+            //    "DELETE cte OUTPUT " +
+            //    "deleted.[MessageNumber], deleted.[Headers], " +
+            //    "deleted.[MessageType], deleted.[MessageBody];";
+
             string script =
                 "WITH cte AS (SELECT TOP (@MessageCount) " +
-                "{НомерСообщения} AS [MessageNumber], {Заголовки} AS [Headers], " +
-                "{ТипСообщения} AS [MessageType], {ТелоСообщения} AS [MessageBody] " +
+                "{МоментВремени} AS [МоментВремени], {Идентификатор} AS [Идентификатор], {Заголовки} AS [Заголовки], " +
+                "{Отправитель} AS [Отправитель], {Получатели} AS [Получатели], " +
+                "{ТипСообщения} AS [ТипСообщения], {ТелоСообщения} AS [ТелоСообщения], " +
+                "{ДатаВремя} AS [ДатаВремя], {Ссылка} AS [Ссылка] " +
                 "FROM {TABLE_NAME} WITH (ROWLOCK, READPAST) " +
-                "ORDER BY {НомерСообщения} ASC) " +
+                "ORDER BY {МоментВремени} ASC, {Идентификатор} ASC) " +
                 "DELETE cte OUTPUT " +
-                "deleted.[MessageNumber], deleted.[Headers], " +
-                "deleted.[MessageType], deleted.[MessageBody];";
+                "deleted.[МоментВремени], deleted.[Идентификатор], deleted.[Заголовки], " +
+                "deleted.[Отправитель], deleted.[Получатели], " +
+                "deleted.[ТипСообщения], deleted.[ТелоСообщения], " +
+                "deleted.[ДатаВремя], deleted.[Ссылка];";
 
             script = script.Replace("{TABLE_NAME}", _options.QueueTable);
 
             foreach (var column in _options.TableColumns)
             {
-                if (column.Key == "НомерСообщения")
-                {
-                    script = script.Replace("{НомерСообщения}", column.Value);
-                }
-                else if (column.Key == "Заголовки")
-                {
-                    script = script.Replace("{Заголовки}", column.Value);
-                }
-                else if (column.Key == "ТипСообщения")
-                {
-                    script = script.Replace("{ТипСообщения}", column.Value);
-                }
-                else if (column.Key == "ТелоСообщения")
-                {
-                    script = script.Replace("{ТелоСообщения}", column.Value);
-                }
+                script = script.Replace($"{{{column.Key}}}", column.Value);
             }
 
             return script;

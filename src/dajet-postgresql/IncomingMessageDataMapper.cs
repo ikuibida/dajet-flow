@@ -1,12 +1,12 @@
 ﻿using DaJet.Flow;
-using DaJet.Flow.Contracts.V1;
+using DaJet.Flow.Contracts;
 using Npgsql;
 using NpgsqlTypes;
 using System.Data;
 using System.Data.Common;
 using System.Text;
 
-namespace DaJet.PostgreSQL.DataMappers.V1
+namespace DaJet.PostgreSQL.DataMappers
 {
     public sealed class IncomingMessageDataMapper : IDataMapper<IncomingMessage>
     {
@@ -83,6 +83,8 @@ namespace DaJet.PostgreSQL.DataMappers.V1
 
             command.Parameters.Clear();
 
+            command.Parameters.Add(new NpgsqlParameter("МоментВремени", NpgsqlDbType.Numeric) { Value = message.MessageNumber });
+            command.Parameters.Add(new NpgsqlParameter("Идентификатор", NpgsqlDbType.Bytea) { Value = message.Uuid.ToByteArray() });
             command.Parameters.Add(new NpgsqlParameter("Заголовки", NpgsqlDbType.Varchar) { Value = message.Headers });
             command.Parameters.Add(new NpgsqlParameter("Отправитель", NpgsqlDbType.Varchar) { Value = message.Sender });
             command.Parameters.Add(new NpgsqlParameter("ТипСообщения", NpgsqlDbType.Varchar) { Value = message.MessageType });
@@ -96,11 +98,19 @@ namespace DaJet.PostgreSQL.DataMappers.V1
         }
         private string BuildInsertScript()
         {
+            //string script =
+            //    "INSERT INTO {TABLE_NAME} " +
+            //    "({НомерСообщения}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, " +
+            //    "{ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
+            //    "SELECT CAST(nextval('{SEQUENCE_NAME}') AS numeric(19,0)), " +
+            //    "CAST(@Заголовки AS mvarchar), CAST(@Отправитель AS mvarchar), CAST(@ТипСообщения AS mvarchar), " +
+            //    "CAST(@ТелоСообщения AS mvarchar), @ДатаВремя, CAST(@ОписаниеОшибки AS mvarchar), @КоличествоОшибок;";
+
             string script =
                 "INSERT INTO {TABLE_NAME} " +
-                "({НомерСообщения}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, " +
+                "({МоментВремени}, {Идентификатор}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, " +
                 "{ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
-                "SELECT CAST(nextval('{SEQUENCE_NAME}') AS numeric(19,0)), " +
+                "SELECT @МоментВремени, @Идентификатор, " +
                 "CAST(@Заголовки AS mvarchar), CAST(@Отправитель AS mvarchar), CAST(@ТипСообщения AS mvarchar), " +
                 "CAST(@ТелоСообщения AS mvarchar), @ДатаВремя, CAST(@ОписаниеОшибки AS mvarchar), @КоличествоОшибок;";
 

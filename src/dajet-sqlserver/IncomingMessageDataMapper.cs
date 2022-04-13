@@ -1,10 +1,10 @@
 ﻿using DaJet.Flow;
-using DaJet.Flow.Contracts.V1;
+using DaJet.Flow.Contracts;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
 
-namespace DaJet.SqlServer.DataMappers.V1
+namespace DaJet.SqlServer.DataMappers
 {
     public sealed class IncomingMessageDataMapper : IDataMapper<IncomingMessage>
     {
@@ -81,6 +81,8 @@ namespace DaJet.SqlServer.DataMappers.V1
 
             command.Parameters.Clear();
 
+            command.Parameters.Add(new SqlParameter("МоментВремени", SqlDbType.Decimal) { Value = message.MessageNumber });
+            command.Parameters.Add(new SqlParameter("Идентификатор", SqlDbType.Binary) { Value = message.Uuid.ToByteArray() });
             command.Parameters.Add(new SqlParameter("Заголовки", SqlDbType.NVarChar) { Value = message.Headers });
             command.Parameters.Add(new SqlParameter("Отправитель", SqlDbType.NVarChar) { Value = message.Sender });
             command.Parameters.Add(new SqlParameter("ТипСообщения", SqlDbType.NVarChar) { Value = message.MessageType });
@@ -94,10 +96,16 @@ namespace DaJet.SqlServer.DataMappers.V1
         }
         private string BuildInsertScript()
         {
+            //string script =
+            //    "INSERT {TABLE_NAME} " +
+            //    "({НомерСообщения}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, {ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
+            //    "SELECT NEXT VALUE FOR {SEQUENCE_NAME}, " +
+            //    "@Заголовки, @Отправитель, @ТипСообщения, @ТелоСообщения, @ДатаВремя, @ОписаниеОшибки, @КоличествоОшибок;";
+
             string script =
                 "INSERT {TABLE_NAME} " +
-                "({НомерСообщения}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, {ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
-                "SELECT NEXT VALUE FOR {SEQUENCE_NAME}, " +
+                "({МоментВремени}, {Идентификатор}, {Заголовки}, {Отправитель}, {ТипСообщения}, {ТелоСообщения}, {ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
+                "SELECT @МоментВремени, @Идентификатор, " +
                 "@Заголовки, @Отправитель, @ТипСообщения, @ТелоСообщения, @ДатаВремя, @ОписаниеОшибки, @КоличествоОшибок;";
 
             script = script.Replace("{TABLE_NAME}", _options.QueueTable);

@@ -1,7 +1,7 @@
-﻿using DaJet.Flow.Contracts.V1;
+﻿using DaJet.Flow.Contracts;
 using System.Text.Json;
 
-namespace DaJet.Flow.Contracts.Transformers.V1
+namespace DaJet.Flow.Transformers
 {
     public sealed class OutgoingIncomingTransformer : Transformer<OutgoingMessage, IncomingMessage>
     {
@@ -9,7 +9,10 @@ namespace DaJet.Flow.Contracts.Transformers.V1
         {
             output = new IncomingMessage()
             {
+                Uuid = Guid.NewGuid(),
                 DateTimeStamp = DateTime.Now,
+                MessageNumber = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond,
+                Sender = input.Sender,
                 Headers = input.Headers,
                 MessageType = input.MessageType,
                 MessageBody = input.MessageBody

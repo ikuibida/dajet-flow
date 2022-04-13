@@ -26,7 +26,7 @@ namespace DaJet.Flow
             else if (options.Source.Type == "RabbitMQ")
             {
                 Type serviceType = GetTypeByName(options.Source.Consumer);
-                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, options.Source.Options);
+                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Source.Options);
             }
 
             object producer = null;
@@ -86,7 +86,6 @@ namespace DaJet.Flow
 
             return null;
         }
-
         private object CreateDatabaseConsumer(in PipelineOptions options)
         {
             // 1.0 Create consumer data mapper
@@ -98,7 +97,7 @@ namespace DaJet.Flow
             Type genericType = GetTypeByName(options.Source.Consumer);
             Type messageType = GetTypeByName(options.Source.Message);
             Type serviceType = genericType.MakeGenericType(messageType);
-            object consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
+            object consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, databaseOptions, mapper);
 
             return consumer;
         }

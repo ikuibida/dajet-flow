@@ -1,6 +1,8 @@
 ﻿using DaJet.Flow;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace DaJet.SqlServer
 {
@@ -8,14 +10,22 @@ namespace DaJet.SqlServer
     {
         private readonly DatabaseOptions _options;
         private readonly IDataMapper<TMessage> _mapper;
-        [ActivatorUtilitiesConstructor] public Consumer(DatabaseOptions options, IDataMapper<TMessage> mapper)
+        
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<Consumer<TMessage>> _logger;
+        
+        [ActivatorUtilitiesConstructor]
+        public Consumer(IServiceProvider serviceProvider, DatabaseOptions options, IDataMapper<TMessage> mapper)
         {
             _mapper = mapper ?? throw new ArgumentNullException(nameof(mapper));
             _options = options ?? throw new ArgumentNullException(nameof(options));
+
+            _serviceProvider = serviceProvider;
+            _logger = serviceProvider.GetRequiredService<ILogger<Consumer<TMessage>>>();
         }
         public override void Pump(CancellationToken token)
         {
-            TMessage message = new(); // TODO: readonly + message.Dispose()
+            TMessage message = new(); // TODO: readonly + buffer + message.Dispose()
 
             int consumed;
             
@@ -30,6 +40,9 @@ namespace DaJet.SqlServer
                     do
                     {
                         consumed = 0;
+
+                        Stopwatch watch = new Stopwatch();
+                        watch.Start();
 
                         using (SqlTransaction transaction = connection.BeginTransaction())
                         {
@@ -54,6 +67,12 @@ namespace DaJet.SqlServer
 
                                 transaction.Commit();
                             }
+                        }
+
+                        watch.Stop();
+                        if (consumed > 0)
+                        {
+                            _logger.LogInformation($"[SqlServer.Consumer] Consumed {consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
                         }
                     }
                     while (consumed > 0 && !token.IsCancellationRequested);

@@ -1,7 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace DaJet.Flow.Contracts.V1
+namespace DaJet.Flow.Contracts
 {
     /// <summary>
     /// Табличный интерфейс исходящей очереди сообщений
@@ -13,7 +13,7 @@ namespace DaJet.Flow.Contracts.V1
         /// <summary>
         /// "НомерСообщения" Порядковый номер сообщения (может генерироваться средствами СУБД) - numeric(19,0)
         /// </summary>
-        [Column("НомерСообщения", Order = 0, TypeName = "numeric(19,0)")]
+        [Column("МоментВремени", Order = 0, TypeName = "numeric(19,0)")]
         [Key][DatabaseGenerated(DatabaseGeneratedOption.None)]
         public long MessageNumber { get; set; } = 0L;
         /// <summary>
@@ -27,6 +27,14 @@ namespace DaJet.Flow.Contracts.V1
         /// "Заголовки" Заголовки сообщения в формате JSON { "ключ": "значение" } - nvarchar(max)
         /// </summary>
         [Column("Заголовки", TypeName = "nvarchar(max)")] public string Headers { get; set; } = string.Empty;
+        /// <summary>
+        /// "Отправитель" Код или UUID отправителя сообщения - nvarchar(36)
+        /// </summary>
+        [Column("Отправитель")] public string Sender { get; set; } = string.Empty;
+        /// <summary>
+        /// "Получатели" Коды или UUID получателей сообщения в формате CSV - nvarchar(max)
+        /// </summary>
+        [Column("Получатели")] public string Recipients { get; set; } = string.Empty;
         /// <summary>
         /// "ТипСообщения" Тип сообщения, например, "Справочник.Номенклатура" - nvarchar(1024)
         /// </summary>

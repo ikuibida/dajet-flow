@@ -1,460 +1,278 @@
-﻿//using DaJet.Data.Messaging;
-//using DaJet.Metadata;
-//using DaJet.Metadata.Model;
-//using RabbitMQ.Client;
-//using RabbitMQ.Client.Events;
-//using System;
-//using System.Collections.Concurrent;
-//using System.Collections.Generic;
-//using System.Text;
-//using System.Text.Json;
-//using System.Threading;
-//using System.Threading.Tasks;
-//using System.Web;
-//using V1 = DaJet.Data.Messaging.V1;
-//using V10 = DaJet.Data.Messaging.V10;
-//using V11 = DaJet.Data.Messaging.V11;
-//using V12 = DaJet.Data.Messaging.V12;
+﻿using DaJet.Flow;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 
-//namespace DaJet.RabbitMQ
-//{
-//    public sealed class Consumer : IDisposable
-//    {
-//        private const string DATABASE_INTERFACE_IS_NOT_SUPPORTED_ERROR
-//            = "Интерфейс данных входящей очереди не поддерживается.";
+namespace DaJet.RabbitMQ
+{
+    public sealed class Consumer : Source<Message>
+    {
+        private readonly BrokerOptions _options;
 
-//        private IConnection Connection;
-//        private readonly ConcurrentDictionary<string, EventingBasicConsumer> Consumers = new ConcurrentDictionary<string, EventingBasicConsumer>();
+        private CancellationToken _token;
 
-//        public string HostName { get; private set; } = "localhost";
-//        public int HostPort { get; private set; } = 5672;
-//        public string VirtualHost { get; private set; } = "/";
-//        public string UserName { get; private set; } = "guest";
-//        public string Password { get; private set; } = "guest";
+        string _consumerTag;
+        private IModel? _channel;
+        private IConnection? _connection;
+        private EventingBasicConsumer? _consumer;
 
-//        public Consumer(in string uri, in List<string> queues)
-//        {
-//            ParseRmqUri(in uri);
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<Consumer> _logger;
+        private int _consumed = 0;
+        private Stopwatch watch = new Stopwatch();
 
-//            foreach (string queue in queues)
-//            {
-//                _ = Consumers.TryAdd(queue, null);
-//            }
-//        }
-//        private void ParseRmqUri(in string amqpUri)
-//        {
-//            // amqp://guest:guest@localhost:5672/%2F
+        [ActivatorUtilitiesConstructor]
+        public Consumer(IServiceProvider serviceProvider, Dictionary<string, string> options)
+        {
+            if (options == null)
+            {
+                throw new ArgumentNullException(nameof(options));
+            }
 
-//            Uri uri = new Uri(amqpUri);
+            _serviceProvider = serviceProvider;
+            _logger = serviceProvider.GetRequiredService<ILogger<Consumer>>();
 
-//            if (uri.Scheme != "amqp")
-//            {
-//                return;
-//            }
+            _options = new BrokerOptions();
 
-//            HostName = uri.Host;
-//            HostPort = uri.Port;
+            if (options.TryGetValue(nameof(BrokerOptions.HostName), out string HostName))
+            {
+                _options.HostName = HostName;
+            }
 
-//            string[] userpass = uri.UserInfo.Split(':');
-//            if (userpass != null && userpass.Length == 2)
-//            {
-//                UserName = HttpUtility.UrlDecode(userpass[0], Encoding.UTF8);
-//                Password = HttpUtility.UrlDecode(userpass[1], Encoding.UTF8);
-//            }
+            if (options.TryGetValue(nameof(BrokerOptions.HostPort), out string HostPort))
+            {
+                _options.HostPort = int.Parse(HostPort);
+            }
 
-//            if (uri.Segments != null && uri.Segments.Length > 1)
-//            {
-//                if (uri.Segments.Length > 1)
-//                {
-//                    VirtualHost = HttpUtility.UrlDecode(uri.Segments[1].TrimEnd('/'), Encoding.UTF8);
-//                }
-//            }
-//        }
+            if (options.TryGetValue(nameof(BrokerOptions.UserName), out string UserName))
+            {
+                _options.UserName = UserName;
+            }
 
-//        private Action<string> _logger;
+            if (options.TryGetValue(nameof(BrokerOptions.Password), out string Password))
+            {
+                _options.Password = Password;
+            }
 
-//        private int _version;
-//        private int _yearOffset = 0;
-//        private string _metadataName;
-//        private ApplicationObject _queue;
-//        private string _connectionString;
-//        private DatabaseProvider _provider;
+            if (options.TryGetValue(nameof(BrokerOptions.VirtualHost), out string VirtualHost))
+            {
+                _options.VirtualHost = VirtualHost;
+            }
 
-//        private CancellationToken _token;
+            if (options.TryGetValue(nameof(BrokerOptions.ExchangeName), out string ExchangeName))
+            {
+                _options.ExchangeName = ExchangeName;
+            }
 
-//        public void Initialize(DatabaseProvider provider, string connectionString, string metadataName)
-//        {
-//            _provider = provider;
-//            _connectionString = connectionString;
-//            _metadataName = metadataName;
-//        }
-//        private void InitializeMetadata()
-//        {
-//            if (!new MetadataService()
-//                .UseDatabaseProvider(_provider)
-//                .UseConnectionString(_connectionString)
-//                .TryOpenInfoBase(out InfoBase infoBase, out string error))
-//            {
-//                throw new Exception(error);
-//            }
+            if (options.TryGetValue(nameof(BrokerOptions.RoutingKey), out string RoutingKey))
+            {
+                _options.RoutingKey = RoutingKey;
+            }
+        }
+        public override void Pump(CancellationToken token)
+        {
+            _token = token;
 
-//            _yearOffset = infoBase.YearOffset;
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    InitializeConsumer();
 
-//            _queue = infoBase.GetApplicationObjectByName(_metadataName);
-//            if (_queue == null)
-//            {
-//                throw new Exception($"Объект метаданных \"{_metadataName}\" не найден.");
-//            }
+                    Task.Delay(TimeSpan.FromSeconds(10), _token).Wait(_token);
 
-//            _version = GetDataContractVersion(in _queue);
-//            if (_version < 1)
-//            {
-//                throw new Exception(DATABASE_INTERFACE_IS_NOT_SUPPORTED_ERROR);
-//            }
-//        }
-//        private int GetDataContractVersion(in ApplicationObject queue)
-//        {
-//            DbInterfaceValidator validator = new DbInterfaceValidator();
+                    //_logger("Consumer heartbeat.");
+                }
+                catch (Exception error)
+                {
 
-//            return validator.GetIncomingInterfaceVersion(in queue);
-//        }
+                    throw;
+                    //_logger(ExceptionHelper.GetErrorText(error));
+                }
+            }
+        }
+        protected override void _Dispose()
+        {
+            if (_consumer != null)
+            {
+                _consumer.Received -= ProcessMessage;
+                _consumer.Model = null;
+                _consumer = null;
+            }
 
-//        public void Consume(CancellationToken token, Action<string> logger)
-//        {
-//            _token = token;
-//            _logger = logger;
+            _channel?.Dispose();
+            _channel = null;
 
-//            while (!_token.IsCancellationRequested)
-//            {
-//                try
-//                {
-//                    InitializeMetadata();
-//                    InitializeOrResetConnection();
-//                    InitializeOrResetConsumers();
-//                    Task.Delay(TimeSpan.FromSeconds(10)).Wait(_token);
-//                    _logger("Consumer heartbeat.");
-//                }
-//                catch (Exception error)
-//                {
-//                    _logger(ExceptionHelper.GetErrorText(error));
-//                }
-//            }
-//        }
-//        public void Dispose()
-//        {
-//            if (Connection != null)
-//            {
-//                if (Connection.IsOpen)
-//                {
-//                    Connection.Close();
-//                }
-//                Connection.Dispose();
-//                Connection = null;
-//            }
+            _connection?.Dispose();
+            _connection = null;
+        }
 
-//            foreach (var consumer in Consumers)
-//            {
-//                DisposeConsumer(consumer.Key);
-//            }
-//        }
+        private void InitializeConnection()
+        {
+            if (_connection != null && _connection.IsOpen)
+            {
+                return;
+            }
 
-//        private IConnection CreateConnection()
-//        {
-//            IConnectionFactory factory = new ConnectionFactory()
-//            {
-//                HostName = HostName,
-//                Port = HostPort,
-//                VirtualHost = VirtualHost,
-//                UserName = UserName,
-//                Password = Password,
-//                AutomaticRecoveryEnabled = true,
-//                NetworkRecoveryInterval = TimeSpan.FromSeconds(10)
-//            };
-//            return factory.CreateConnection();
-//        }
-//        private void InitializeOrResetConnection()
-//        {
-//            if (Connection == null)
-//            {
-//                Connection = CreateConnection();
-//            }
-//            else if (!Connection.IsOpen)
-//            {
-//                Dispose();
-//                Connection = CreateConnection();
-//            }
-//        }
-        
-//        private void InitializeOrResetConsumers()
-//        {
-//            foreach (var consumer in Consumers)
-//            {
-//                if (consumer.Value == null)
-//                {
-//                    StartConsumerTask(consumer.Key);
-//                }
-//                else if (!IsConsumerHealthy(consumer.Value))
-//                {
-//                    ResetConsumerTask(consumer.Key);
-//                }
-//            }
-//        }
-//        private void StartConsumerTask(string queueName)
-//        {
-//            _ = Task.Factory.StartNew(
-//                StartNewConsumer,
-//                queueName,
-//                CancellationToken.None,
-//                TaskCreationOptions.LongRunning,
-//                TaskScheduler.Default);
-//        }
-//        private void StartNewConsumer(object queueName)
-//        {
-//            if (!(queueName is string queue)) return;
+            _connection?.Dispose(); // The connection might be closed, but not disposed yet.
 
-//            string consumerTag = null;
-//            EventingBasicConsumer consumer = null;
+            IConnectionFactory factory = new ConnectionFactory()
+            {
+                HostName = _options.HostName,
+                Port = _options.HostPort,
+                VirtualHost = _options.VirtualHost,
+                UserName = _options.UserName,
+                Password = _options.Password
+            };
 
-//            try
-//            {
-//                IModel channel = Connection.CreateModel();
+            _connection = factory.CreateConnection();
+        }
+        private void InitializeChannel()
+        {
+            if (_channel != null && _channel.IsOpen)
+            {
+                return;
+            }
+
+            _channel?.Dispose(); // The channel might be closed, but not disposed yet.
+
+            InitializeConnection();
+
+            _channel = _connection!.CreateModel();
+            _channel.BasicQos(0, 1, false);
+        }
+        private void InitializeConsumer()
+        {
+            if (_consumer != null &&
+                _consumer.Model != null &&
+                _consumer.Model.IsOpen &&
+                _consumer.IsRunning)
+            {
+                return;
+            }
+
+            if (_consumer != null)
+            {
+                _consumer.Received -= ProcessMessage;
+                _consumer.Model?.Dispose();
+                _consumer.Model = null;
+            }
+
+            InitializeChannel();
+
+            _consumer = new EventingBasicConsumer(_channel);
+            _consumer.Received += ProcessMessage;
+
+            _consumerTag = _channel.BasicConsume(_options.RoutingKey, false, _consumer);
+
+            //_consumer.Model.BasicCancel(_consumerTag);
+        }
+        private void ProcessMessage(object sender, BasicDeliverEventArgs args)
+        {
+            if (!(sender is EventingBasicConsumer consumer)) return;
+
+            bool success = true;
+
+            try
+            {
+                Message message = CreateMessage(in args);
+
+                _Process(in message);
+
+                _Synchronize();
+
+                consumer.Model.BasicAck(args.DeliveryTag, false);
+
                 
-//                channel.BasicQos(0, 1, false);
+                if (_consumed == 0)
+                {
+                    watch.Start();
+                }
 
-//                consumer = new EventingBasicConsumer(channel);
-//                consumer.Received += ProcessMessage;
+                _consumed++;
 
-//                consumerTag = channel.BasicConsume(queue, false, consumer);
-//            }
-//            catch
-//            {
-//                if (consumerTag != null)
-//                {
-//                    DisposeConsumer(consumerTag);
-//                }
+                if (_consumed == 1000)
+                {
+                    watch.Stop();
+                    _logger.LogInformation($"[RabbitMQ.Consumer] Consumed {_consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
+                    _consumed = 0;
+                    watch.Reset();
+                }
+            }
+            catch (Exception error)
+            {
+                success = false;
+                //_logger(ExceptionHelper.GetErrorText(error));
+            }
 
-//                throw; // Завершаем поток (задачу) с ошибкой
-//            }
+            if (!success)
+            {
+                NackMessage(in consumer, in args);
+            }
+        }
+        private void NackMessage(in EventingBasicConsumer consumer, in BasicDeliverEventArgs args)
+        {
+            try
+            {
+                Task.Delay(TimeSpan.FromSeconds(10), _token).Wait(_token);
 
-//            _ = Consumers.TryUpdate(queue, consumer, null);
-//        }
-//        private bool IsConsumerHealthy(EventingBasicConsumer consumer)
-//        {
-//            return (consumer != null
-//                && consumer.Model != null
-//                && consumer.Model.IsOpen
-//                && consumer.IsRunning);
-//        }
-//        private void ResetConsumerTask(string queueName)
-//        {
-//            DisposeConsumer(queueName);
-//            StartConsumerTask(queueName);
-//        }
-//        private void DisposeConsumer(string queueName)
-//        {
-//            if (!Consumers.TryGetValue(queueName, out EventingBasicConsumer consumer))
-//            {
-//                return;
-//            }
+                consumer.Model.BasicNack(args.DeliveryTag, false, true);
+            }
+            catch (Exception error)
+            {
+                //_logger(ExceptionHelper.GetErrorText(error));
+            }
+        }
+        private Message CreateMessage(in BasicDeliverEventArgs args)
+        {
+            Message message = new();
+            
+            message.AppId = (args.BasicProperties.AppId ?? string.Empty);
+            message.Type = (args.BasicProperties.Type ?? string.Empty);
+            message.Body = (args.Body.IsEmpty ? string.Empty : Encoding.UTF8.GetString(args.Body.Span));
+            
+            message.Headers = args.BasicProperties.Headers;
+            
+            // TODO: process headers and other basic properties
+            // string headers = GetMessageHeaders(in args);
 
-//            if (consumer != null)
-//            {
-//                consumer.Received -= ProcessMessage;
+            return message;
+        }
+        private string GetMessageHeaders(in BasicDeliverEventArgs args)
+        {
+            if (args.BasicProperties.Headers == null ||
+                args.BasicProperties.Headers.Count == 0)
+            {
+                return string.Empty;
+            }
 
-//                if (consumer.Model != null)
-//                {
-//                    consumer.Model.Dispose();
-//                    consumer.Model = null;
-//                }
+            Dictionary<string, string> headers = new();
 
-//                _ = Consumers.TryUpdate(queueName, null, consumer);
-//            }
+            foreach (var header in args.BasicProperties.Headers)
+            {
+                if (header.Value is byte[] value)
+                {
+                    try
+                    {
+                        headers.Add(header.Key, Encoding.UTF8.GetString(value));
+                    }
+                    catch
+                    {
+                        headers.Add(header.Key, string.Empty);
+                    }
+                }
+            }
 
-//            //if (IsConsumerHealthy(consumer))
-//            //{
-//            //    consumer.Model.BasicCancel(consumer.ConsumerTags[0]);
-//            //}
-//        }
+            if (headers.Count == 0)
+            {
+                return string.Empty;
+            }
 
-//        private void ProcessMessage(object sender, BasicDeliverEventArgs args)
-//        {
-//            if (!(sender is EventingBasicConsumer consumer)) return;
-
-//            bool success = true;
-
-//            try
-//            {
-//                using (IMessageProducer producer = GetMessageProducer())
-//                {
-//                    IncomingMessageDataMapper message = ProduceMessage(in args);
-
-//                    producer.Insert(in message);
-
-//                    consumer.Model.BasicAck(args.DeliveryTag, false);
-//                }
-//            }
-//            catch (Exception error)
-//            {
-//                success = false;
-//                _logger(ExceptionHelper.GetErrorText(error));
-//            }
-
-//            if (!success)
-//            {
-//                NackMessage(in consumer, in args);
-//            }
-//        }
-//        private IMessageProducer GetMessageProducer()
-//        {
-//            if (_provider == DatabaseProvider.SQLServer)
-//            {
-//                return new MsMessageProducer(in _connectionString, _queue);
-//            }
-//            else
-//            {
-//                return new PgMessageProducer(in _connectionString, _queue);
-//            }
-//        }
-//        private void NackMessage(in EventingBasicConsumer consumer, in BasicDeliverEventArgs args)
-//        {
-//            if (!IsConsumerHealthy(consumer)) return;
-
-//            Task.Delay(TimeSpan.FromSeconds(10)).Wait(_token);
-
-//            try
-//            {
-//                consumer.Model.BasicNack(args.DeliveryTag, false, true);
-//            }
-//            catch (Exception error)
-//            {
-//                _logger(ExceptionHelper.GetErrorText(error));
-//            }
-//        }
-//        private IncomingMessageDataMapper ProduceMessage(in BasicDeliverEventArgs args)
-//        {
-//            if (_version == 1)
-//            {
-//                return ProduceMessage1(in args);
-//            }
-//            else if (_version == 10)
-//            {
-//                return ProduceMessage10(in args);
-//            }
-//            else if (_version == 11)
-//            {
-//                return ProduceMessage11(in args);
-//            }
-//            else if (_version == 12)
-//            {
-//                return ProduceMessage12(in args);
-//            }
-//            else
-//            {
-//                return null;
-//            }
-//        }
-//        private IncomingMessageDataMapper ProduceMessage1(in BasicDeliverEventArgs args)
-//        {
-//            V1.IncomingMessage message = IncomingMessageDataMapper.Create(_version) as V1.IncomingMessage;
-
-//            message.DateTimeStamp = DateTime.Now.AddYears(_yearOffset);
-//            message.MessageNumber = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-//            message.ErrorCount = 0;
-//            message.ErrorDescription = String.Empty;
-//            message.Headers = GetMessageHeaders(in args);
-//            message.Sender = (args.BasicProperties.AppId ?? string.Empty);
-//            message.MessageType = (args.BasicProperties.Type ?? string.Empty);
-//            message.MessageBody = (args.Body.Length == 0 ? string.Empty : Encoding.UTF8.GetString(args.Body.Span));
-
-//            return message;
-//        }
-//        private IncomingMessageDataMapper ProduceMessage10(in BasicDeliverEventArgs args)
-//        {
-//            V10.IncomingMessage message = IncomingMessageDataMapper.Create(_version) as V10.IncomingMessage;
-
-//            message.Uuid = Guid.NewGuid();
-//            message.DateTimeStamp = DateTime.Now.AddYears(_yearOffset);
-//            message.MessageNumber = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-//            message.ErrorCount = 0;
-//            message.ErrorDescription = String.Empty;
-//            message.Sender = (args.BasicProperties.AppId ?? string.Empty);
-//            message.MessageType = (args.BasicProperties.Type ?? string.Empty);
-//            message.MessageBody = (args.Body.Length == 0 ? string.Empty : Encoding.UTF8.GetString(args.Body.Span));
-
-//            if (args.BasicProperties.Headers != null)
-//            {
-//                if (args.BasicProperties.Headers.TryGetValue("OperationType", out object value))
-//                {
-//                    if (value is byte[] operationType)
-//                    {
-//                        message.OperationType = Encoding.UTF8.GetString(operationType);
-//                    }
-//                }
-//            }
-
-//            return message;
-//        }
-//        private IncomingMessageDataMapper ProduceMessage11(in BasicDeliverEventArgs args)
-//        {
-//            V11.IncomingMessage message = IncomingMessageDataMapper.Create(_version) as V11.IncomingMessage;
-
-//            message.Uuid = Guid.NewGuid();
-//            message.DateTimeStamp = DateTime.Now.AddYears(_yearOffset);
-//            message.MessageNumber = DateTime.UtcNow.Ticks / TimeSpan.TicksPerMillisecond;
-//            message.ErrorCount = 0;
-//            message.ErrorDescription = String.Empty;
-//            message.Headers = GetMessageHeaders(in args);
-//            message.Sender = (args.BasicProperties.AppId ?? string.Empty);
-//            message.MessageType = (args.BasicProperties.Type ?? string.Empty);
-//            message.MessageBody = (args.Body.Length == 0 ? string.Empty : Encoding.UTF8.GetString(args.Body.Span));
-
-//            return message;
-//        }
-//        private IncomingMessageDataMapper ProduceMessage12(in BasicDeliverEventArgs args)
-//        {
-//            V12.IncomingMessage message = IncomingMessageDataMapper.Create(_version) as V12.IncomingMessage;
-
-//            message.MessageNumber = DateTime.UtcNow.Ticks;
-//            message.DateTimeStamp = DateTime.Now.AddYears(_yearOffset);
-//            message.ErrorCount = 0;
-//            message.ErrorDescription = String.Empty;
-//            message.Headers = GetMessageHeaders(in args);
-//            message.Sender = (args.BasicProperties.AppId ?? string.Empty);
-//            message.MessageType = (args.BasicProperties.Type ?? string.Empty);
-//            message.MessageBody = (args.Body.Length == 0 ? string.Empty : Encoding.UTF8.GetString(args.Body.Span));
-
-//            return message;
-//        }
-//        private string GetMessageHeaders(in BasicDeliverEventArgs args)
-//        {
-//            if (args.BasicProperties.Headers == null || args.BasicProperties.Headers.Count == 0)
-//            {
-//                return string.Empty;
-//            }
-
-//            Dictionary<string, string> headers = new Dictionary<string, string>();
-
-//            foreach (var header in args.BasicProperties.Headers)
-//            {
-//                if (header.Value is byte[] value)
-//                {
-//                    try
-//                    {
-//                        headers.Add(header.Key, Encoding.UTF8.GetString(value));
-//                    }
-//                    catch
-//                    {
-//                        headers.Add(header.Key, string.Empty);
-//                    }
-//                }
-//            }
-
-//            if (headers.Count == 0)
-//            {
-//                return string.Empty;
-//            }
-
-//            return JsonSerializer.Serialize(headers);
-//        }
-//    }
-//}
+            return JsonSerializer.Serialize(headers);
+        }
+    }
+}

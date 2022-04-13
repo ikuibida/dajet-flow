@@ -22,7 +22,7 @@ namespace DaJet.Flow.App
         }
         private void DoWork()
         {
-            _logger.LogInformation($"{_pipeline.Name} is running");
+            _logger.LogInformation($"Pipeline [{_pipeline.Name}] is running ...");
 
             while (!_cancellationToken.IsCancellationRequested)
             {
@@ -30,9 +30,9 @@ namespace DaJet.Flow.App
                 {
                     TryDoWork();
 
-                    _logger.LogInformation($"{_pipeline.Name} sleep 30 seconds ...");
+                    //_logger.LogInformation($"{_pipeline.Name} sleep 30 seconds ...");
 
-                    Task.Delay(TimeSpan.FromSeconds(30)).Wait(_cancellationToken);
+                    Task.Delay(TimeSpan.FromSeconds(1)).Wait(_cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -44,7 +44,7 @@ namespace DaJet.Flow.App
                 }
             }
 
-            _logger.LogInformation($"{_pipeline.Name} is stopped");
+            _logger.LogInformation($"Pipeline [{_pipeline.Name}] is stopped.");
         }
         private void TryDoWork()
         {
@@ -52,7 +52,7 @@ namespace DaJet.Flow.App
             watch.Start();
             _pipeline.Execute();
             watch.Stop();
-            _logger.LogWarning($"{_pipeline.Name} elapsed in {watch.ElapsedMilliseconds} ms");
+            //_logger.LogWarning($"{_pipeline.Name} elapsed in {watch.ElapsedMilliseconds} ms");
         }
     }
 }

@@ -16,8 +16,6 @@ namespace DaJet.RabbitMQ
         private IBasicProperties? _properties;
         private bool ConnectionIsBlocked = false;
 
-        private byte[]? _buffer; // message body buffer
-
         [ActivatorUtilitiesConstructor] public Producer(Dictionary<string, string> options)
         {
             if (options == null)
@@ -99,14 +97,14 @@ namespace DaJet.RabbitMQ
 
         private void InitializeChannel()
         {
-            InitializeConnection();
-
             if (_channel != null && _channel.IsOpen)
             {
                 return;
             }
 
             _channel?.Dispose(); // The channel might be closed, but not disposed yet.
+
+            InitializeConnection();
 
             _channel = _connection.CreateModel();
             _channel.ConfirmSelect();
@@ -180,11 +178,6 @@ namespace DaJet.RabbitMQ
 
             _connection?.Dispose();
             _connection = null;
-
-            if (_buffer != null)
-            {
-                ArrayPool<byte>.Shared.Return(_buffer);
-            }
         }
 
         protected override void _Process(in Message message)
@@ -195,7 +188,7 @@ namespace DaJet.RabbitMQ
 
             CopyMessageProperties(in message);
 
-            ReadOnlyMemory<byte> messageBody = GetMessageBody(in message);
+            ReadOnlyMemory<byte> messageBody = Encoding.UTF8.GetBytes(message.Body);
 
             if (string.IsNullOrWhiteSpace(_options.RoutingKey))
             {
@@ -225,26 +218,6 @@ namespace DaJet.RabbitMQ
 
             _properties.ReplyTo = message.ReplyTo;
             _properties.CorrelationId = message.CorrelationId;
-        }
-        private ReadOnlyMemory<byte> GetMessageBody(in Message message)
-        {
-            int bufferSize = message.Body.Length * 2; // char == 2 bytes
-
-            if (_buffer == null)
-            {
-                _buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
-            }
-            else if (_buffer.Length < bufferSize)
-            {
-                ArrayPool<byte>.Shared.Return(_buffer);
-                _buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
-            }
-
-            int encoded = Encoding.UTF8.GetBytes(message.Body, 0, message.Body.Length, _buffer, 0);
-
-            ReadOnlyMemory<byte> messageBody = new ReadOnlyMemory<byte>(_buffer, 0, encoded);
-
-            return messageBody;
         }
     }
 }
