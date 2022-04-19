@@ -68,6 +68,7 @@ namespace DaJet.Flow.App
                 })
                 .ConfigureServices(ConfigureServices)
                 .UseSerilog();
+                // TODO: .UseDaJetMetadataCache();
         }
         private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
         {
