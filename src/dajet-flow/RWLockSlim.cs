@@ -11,6 +11,10 @@
         {
             return new WriteLockToken(this);
         }
+        public UpgradeableLockToken UpgradeableLock()
+        {
+            return new UpgradeableLockToken(this);
+        }
         public void Dispose()
         {
             _lock.Dispose();
@@ -39,6 +43,19 @@
             public void Dispose()
             {
                 _this._lock.ExitWriteLock();
+            }
+        }
+        public struct UpgradeableLockToken : IDisposable
+        {
+            private readonly RWLockSlim _this;
+            public UpgradeableLockToken(in RWLockSlim @this)
+            {
+                _this = @this;
+                _this._lock.EnterUpgradeableReadLock();
+            }
+            public void Dispose()
+            {
+                _this._lock.ExitUpgradeableReadLock();
             }
         }
     }

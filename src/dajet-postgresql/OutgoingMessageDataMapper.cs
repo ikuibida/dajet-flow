@@ -41,7 +41,6 @@ namespace DaJet.PostgreSQL.DataMappers
             message.MessageType = reader.IsDBNull("ТипСообщения") ? string.Empty : reader.GetString("ТипСообщения");
             message.MessageBody = reader.IsDBNull("ТелоСообщения") ? string.Empty : reader.GetString("ТелоСообщения");
             message.DateTimeStamp = reader.IsDBNull("ДатаВремя") ? DateTime.MinValue : reader.GetDateTime("ДатаВремя");
-            message.Reference = reader.IsDBNull("Ссылка") ? Guid.Empty : new Guid((byte[])reader["Ссылка"]);
         }
         private string BuildSelectScript()
         {
@@ -54,7 +53,7 @@ namespace DaJet.PostgreSQL.DataMappers
                 "CAST(t.{Отправитель} AS text) AS \"Отправитель\", CAST(t.{Получатели} AS text) AS \"Получатели\", " +
                 "CAST(t.{Заголовки} AS text) AS \"Заголовки\", " +
                 "CAST(t.{ТипСообщения} AS varchar) AS \"ТипСообщения\", CAST(t.{ТелоСообщения} AS text) AS \"ТелоСообщения\", " +
-                "t.{Ссылка} AS \"Ссылка\", t.{ДатаВремя} AS \"ДатаВремя\";";
+                "t.{ДатаВремя} AS \"ДатаВремя\";";
 
             script = script.Replace("{TABLE_NAME}", _options.QueueTable);
 
@@ -90,14 +89,6 @@ namespace DaJet.PostgreSQL.DataMappers
         }
         private string BuildInsertScript()
         {
-            //string script =
-            //    "INSERT INTO {TABLE_NAME} " +
-            //    "({МоментВремени}, {Заголовки}, {Отправитель}, {ТипСообщения}, " +
-            //    "{ТелоСообщения}, {ДатаВремя}, {ОписаниеОшибки}, {КоличествоОшибок}) " +
-            //    "SELECT CAST(nextval('{SEQUENCE_NAME}') AS numeric(19,0)), " +
-            //    "CAST(@Заголовки AS mvarchar), CAST(@Отправитель AS mvarchar), CAST(@ТипСообщения AS mvarchar), " +
-            //    "CAST(@ТелоСообщения AS mvarchar), @ДатаВремя, CAST(@ОписаниеОшибки AS mvarchar), @КоличествоОшибок;";
-
             string script =
                 "INSERT INTO {TABLE_NAME} " +
                 "({МоментВремени}, {Идентификатор}, {Заголовки}, {Отправитель}, {Получатели}, {ТипСообщения}, " +

@@ -40,33 +40,22 @@ namespace DaJet.SqlServer.DataMappers
             message.MessageType = reader.IsDBNull("ТипСообщения") ? string.Empty : reader.GetString("ТипСообщения");
             message.MessageBody = reader.IsDBNull("ТелоСообщения") ? string.Empty : reader.GetString("ТелоСообщения");
             message.DateTimeStamp = reader.IsDBNull("ДатаВремя") ? DateTime.MinValue : reader.GetDateTime("ДатаВремя");
-            message.Reference = reader.IsDBNull("Ссылка") ? Guid.Empty : new Guid((byte[])reader["Ссылка"]);
         }
         private string BuildSelectScript()
         {
-            //string script =
-            //    "WITH cte AS (SELECT TOP (@MessageCount) " +
-            //    "{НомерСообщения} AS [MessageNumber], {Заголовки} AS [Headers], " +
-            //    "{ТипСообщения} AS [MessageType], {ТелоСообщения} AS [MessageBody] " +
-            //    "FROM {TABLE_NAME} WITH (ROWLOCK, READPAST) " +
-            //    "ORDER BY {НомерСообщения} ASC) " +
-            //    "DELETE cte OUTPUT " +
-            //    "deleted.[MessageNumber], deleted.[Headers], " +
-            //    "deleted.[MessageType], deleted.[MessageBody];";
-
             string script =
                 "WITH cte AS (SELECT TOP (@MessageCount) " +
                 "{МоментВремени} AS [МоментВремени], {Идентификатор} AS [Идентификатор], {Заголовки} AS [Заголовки], " +
                 "{Отправитель} AS [Отправитель], {Получатели} AS [Получатели], " +
                 "{ТипСообщения} AS [ТипСообщения], {ТелоСообщения} AS [ТелоСообщения], " +
-                "{ДатаВремя} AS [ДатаВремя], {Ссылка} AS [Ссылка] " +
+                "{ДатаВремя} AS [ДатаВремя] " +
                 "FROM {TABLE_NAME} WITH (ROWLOCK, READPAST) " +
                 "ORDER BY {МоментВремени} ASC, {Идентификатор} ASC) " +
                 "DELETE cte OUTPUT " +
                 "deleted.[МоментВремени], deleted.[Идентификатор], deleted.[Заголовки], " +
                 "deleted.[Отправитель], deleted.[Получатели], " +
                 "deleted.[ТипСообщения], deleted.[ТелоСообщения], " +
-                "deleted.[ДатаВремя], deleted.[Ссылка];";
+                "deleted.[ДатаВремя];";
 
             script = script.Replace("{TABLE_NAME}", _options.QueueTable);
 

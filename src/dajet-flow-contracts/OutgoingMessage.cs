@@ -47,9 +47,5 @@ namespace DaJet.Flow.Contracts
         /// "ДатаВремя" Время создания сообщения - datetime2
         /// </summary>
         [Column("ДатаВремя", TypeName = "datetime2")] public DateTime DateTimeStamp { get; set; } = DateTime.MinValue;
-        /// <summary>
-        /// "Ссылка" Уникальный идентификатор объекта 1С в теле сообщения - binary(16)
-        /// </summary>
-        [Column("Ссылка", TypeName = "binary(16)")] public Guid Reference { get; set; } = Guid.Empty;
     }
 }
