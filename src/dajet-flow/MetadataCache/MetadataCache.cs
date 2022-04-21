@@ -45,7 +45,7 @@ namespace DaJet.Flow
         {
             using (_lock.ReadLock())
             {
-                return _cache.TryGetValue(CACHE_KEY, out infoBase);
+                return _cache.TryGetValue(CACHE_KEY, out infoBase!);
             }
         }
         void IDisposable.Dispose()

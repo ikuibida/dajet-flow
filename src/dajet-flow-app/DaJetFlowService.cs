@@ -32,7 +32,7 @@ namespace DaJet.Flow.App
 
                     //_logger.LogInformation($"{_pipeline.Name} sleep 30 seconds ...");
 
-                    Task.Delay(TimeSpan.FromSeconds(1)).Wait(_cancellationToken);
+                    Task.Delay(TimeSpan.FromSeconds(10)).Wait(_cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -40,7 +40,7 @@ namespace DaJet.Flow.App
                 }
                 catch (Exception error)
                 {
-                    _logger.LogTrace($"{_pipeline.Name}{Environment.NewLine}{error}", string.Empty);
+                    _logger.LogError($"{_pipeline.Name}{Environment.NewLine}{error}", string.Empty);
                 }
             }
 

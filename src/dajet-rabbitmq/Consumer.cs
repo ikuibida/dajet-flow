@@ -15,7 +15,7 @@ namespace DaJet.RabbitMQ
 
         private CancellationToken _token;
 
-        string _consumerTag;
+        private string? _consumerTag;
         private IModel? _channel;
         private IConnection? _connection;
         private EventingBasicConsumer? _consumer;
@@ -28,50 +28,16 @@ namespace DaJet.RabbitMQ
         [ActivatorUtilitiesConstructor]
         public Consumer(IServiceProvider serviceProvider, Dictionary<string, string> options)
         {
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
             }
 
-            _serviceProvider = serviceProvider;
-            _logger = serviceProvider.GetRequiredService<ILogger<Consumer>>();
+            _options = BrokerOptions.CreateOptions(options);
 
-            _options = new BrokerOptions();
-
-            if (options.TryGetValue(nameof(BrokerOptions.HostName), out string HostName))
-            {
-                _options.HostName = HostName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.HostPort), out string HostPort))
-            {
-                _options.HostPort = int.Parse(HostPort);
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.UserName), out string UserName))
-            {
-                _options.UserName = UserName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.Password), out string Password))
-            {
-                _options.Password = Password;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.VirtualHost), out string VirtualHost))
-            {
-                _options.VirtualHost = VirtualHost;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.ExchangeName), out string ExchangeName))
-            {
-                _options.ExchangeName = ExchangeName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.RoutingKey), out string RoutingKey))
-            {
-                _options.RoutingKey = RoutingKey;
-            }
+            _logger = _serviceProvider.GetRequiredService<ILogger<Consumer>>();
         }
         public override void Pump(CancellationToken token)
         {
@@ -173,7 +139,7 @@ namespace DaJet.RabbitMQ
         }
         private void ProcessMessage(object sender, BasicDeliverEventArgs args)
         {
-            if (!(sender is EventingBasicConsumer consumer)) return;
+            if (sender is not EventingBasicConsumer consumer) return;
 
             bool success = true;
 

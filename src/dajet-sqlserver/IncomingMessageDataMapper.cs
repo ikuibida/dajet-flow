@@ -8,8 +8,8 @@ namespace DaJet.SqlServer.DataMappers
 {
     public sealed class IncomingMessageDataMapper : IDataMapper<IncomingMessage>
     {
-        private readonly DatabaseOptions _options;
-        public IncomingMessageDataMapper(DatabaseOptions options)
+        private readonly DataMapperOptions _options;
+        public IncomingMessageDataMapper(DataMapperOptions options)
         {
             _options = options;
         }
@@ -48,7 +48,7 @@ namespace DaJet.SqlServer.DataMappers
                 "deleted.[MessageNumber], deleted.[Headers], " +
                 "deleted.[MessageType], deleted.[MessageBody];";
 
-            script = script.Replace("{TABLE_NAME}", _options.QueueTable);
+            script = script.Replace("{TABLE_NAME}", _options.TableName);
 
             foreach (var column in _options.TableColumns)
             {
@@ -108,8 +108,8 @@ namespace DaJet.SqlServer.DataMappers
                 "SELECT @МоментВремени, @Идентификатор, " +
                 "@Заголовки, @Отправитель, @ТипСообщения, @ТелоСообщения, @ДатаВремя, @ОписаниеОшибки, @КоличествоОшибок;";
 
-            script = script.Replace("{TABLE_NAME}", _options.QueueTable);
-            script = script.Replace("{SEQUENCE_NAME}", _options.SequenceObject);
+            script = script.Replace("{TABLE_NAME}", _options.TableName);
+            script = script.Replace("{SEQUENCE_NAME}", _options.SequenceName);
 
             foreach (var column in _options.TableColumns)
             {

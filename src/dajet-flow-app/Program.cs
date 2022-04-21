@@ -107,9 +107,19 @@ namespace DaJet.Flow.App
 
                     PipelineBuilder builder = serviceProvider.GetRequiredService<PipelineBuilder>();
 
-                    IPipeline pipeline = builder.Build(options);
+                    IPipeline pipeline = builder.Build(options, out List<string> errors);
 
-                    logger.LogInformation($"Pipeline [{pipeline.Name}] is built.");
+                    if (pipeline == null)
+                    {
+                        foreach (string error in errors)
+                        {
+                            logger.LogError(error);
+                        }
+                    }
+                    else
+                    {
+                        logger.LogInformation($"Pipeline [{pipeline.Name}] is built.");
+                    }
 
                     return new DaJetFlowService(pipeline, logger);
                 });

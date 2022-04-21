@@ -1,8 +1,8 @@
 ﻿using DaJet.Flow;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RabbitMQ.Client;
 using RabbitMQ.Client.Events;
-using System.Buffers;
 using System.Text;
 
 namespace DaJet.RabbitMQ
@@ -11,54 +11,27 @@ namespace DaJet.RabbitMQ
     {
         private readonly BrokerOptions _options;
 
+        private readonly IServiceProvider _serviceProvider;
+        private readonly ILogger<Producer> _logger;
+
         private IModel? _channel;
         private IConnection? _connection;
         private IBasicProperties? _properties;
         private bool ConnectionIsBlocked = false;
 
-        [ActivatorUtilitiesConstructor] public Producer(Dictionary<string, string> options)
+        [ActivatorUtilitiesConstructor]
+        public Producer(IServiceProvider serviceProvider, Dictionary<string, string> options)
         {
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
             }
 
-            _options = new BrokerOptions();
+            _options = BrokerOptions.CreateOptions(options);
 
-            if (options.TryGetValue(nameof(BrokerOptions.HostName), out string HostName))
-            {
-                _options.HostName = HostName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.HostPort), out string HostPort))
-            {
-                _options.HostPort = int.Parse(HostPort);
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.UserName), out string UserName))
-            {
-                _options.UserName = UserName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.Password), out string Password))
-            {
-                _options.Password = Password;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.VirtualHost), out string VirtualHost))
-            {
-                _options.VirtualHost = VirtualHost;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.ExchangeName), out string ExchangeName))
-            {
-                _options.ExchangeName = ExchangeName;
-            }
-
-            if (options.TryGetValue(nameof(BrokerOptions.RoutingKey), out string RoutingKey))
-            {
-                _options.RoutingKey = RoutingKey;
-            }
+            _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
         }
 
         #region "RABBITMQ CONNECTION AND CHANNEL SETUP"

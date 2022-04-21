@@ -47,5 +47,51 @@ namespace DaJet.RabbitMQ
                 }
             }
         }
+        public static BrokerOptions CreateOptions(Dictionary<string, string> options)
+        {
+            if (options == null) throw new ArgumentNullException(nameof(options));
+
+            BrokerOptions _options = new();
+
+            if (options.TryGetValue(nameof(BrokerOptions.HostName), out string? HostName) && !string.IsNullOrWhiteSpace(HostName))
+            {
+                _options.HostName = HostName;
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.HostPort), out string? HostPort) && !string.IsNullOrWhiteSpace(HostPort))
+            {
+                if (int.TryParse(HostPort, out int hostPort) && hostPort > 0)
+                {
+                    _options.HostPort = hostPort;
+                }
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.UserName), out string? UserName) && !string.IsNullOrWhiteSpace(UserName))
+            {
+                _options.UserName = UserName;
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.Password), out string? Password) && !string.IsNullOrWhiteSpace(Password))
+            {
+                _options.Password = Password;
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.VirtualHost), out string? VirtualHost) && !string.IsNullOrWhiteSpace(VirtualHost))
+            {
+                _options.VirtualHost = VirtualHost;
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.ExchangeName), out string? ExchangeName) && !string.IsNullOrWhiteSpace(ExchangeName))
+            {
+                _options.ExchangeName = ExchangeName;
+            }
+
+            if (options.TryGetValue(nameof(BrokerOptions.RoutingKey), out string? RoutingKey) && !string.IsNullOrWhiteSpace(RoutingKey))
+            {
+                _options.RoutingKey = RoutingKey;
+            }
+
+            return _options;
+        }
     }
 }

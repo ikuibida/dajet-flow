@@ -10,8 +10,8 @@ namespace DaJet.PostgreSQL.DataMappers
 {
     public sealed class IncomingMessageDataMapper : IDataMapper<IncomingMessage>
     {
-        private readonly DatabaseOptions _options;
-        public IncomingMessageDataMapper(DatabaseOptions options)
+        private readonly DataMapperOptions _options;
+        public IncomingMessageDataMapper(DataMapperOptions options)
         {
             _options = options;
         }
@@ -50,7 +50,7 @@ namespace DaJet.PostgreSQL.DataMappers
                 "deleted.[MessageNumber], deleted.[Headers], " +
                 "deleted.[MessageType], deleted.[MessageBody];";
 
-            script = script.Replace("{TABLE_NAME}", _options.QueueTable);
+            script = script.Replace("{TABLE_NAME}", _options.TableName);
 
             foreach (var column in _options.TableColumns)
             {
@@ -114,8 +114,8 @@ namespace DaJet.PostgreSQL.DataMappers
                 "CAST(@Заголовки AS mvarchar), CAST(@Отправитель AS mvarchar), CAST(@ТипСообщения AS mvarchar), " +
                 "CAST(@ТелоСообщения AS mvarchar), @ДатаВремя, CAST(@ОписаниеОшибки AS mvarchar), @КоличествоОшибок;";
 
-            script = script.Replace("{TABLE_NAME}", _options.QueueTable);
-            script = script.Replace("{SEQUENCE_NAME}", _options.SequenceObject);
+            script = script.Replace("{TABLE_NAME}", _options.TableName);
+            script = script.Replace("{SEQUENCE_NAME}", _options.SequenceName);
 
             foreach (var column in _options.TableColumns)
             {

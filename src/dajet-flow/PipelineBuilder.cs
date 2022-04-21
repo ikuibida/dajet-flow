@@ -1,7 +1,5 @@
 ﻿using DaJet.Metadata;
-using DaJet.Metadata.Model;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using System.Reflection;
 
 namespace DaJet.Flow
@@ -9,170 +7,354 @@ namespace DaJet.Flow
     public sealed class PipelineBuilder
     {
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<PipelineBuilder> _logger;
-        public PipelineBuilder(IServiceProvider serviceProvider, ILogger<PipelineBuilder> logger)
+        public PipelineBuilder(IServiceProvider serviceProvider)
         {
-            _logger = logger;
             _serviceProvider = serviceProvider;
         }
-        public IPipeline Build(PipelineOptions options)
+        public IPipeline Build(PipelineOptions options, out List<string> errors)
         {
-            object consumer = null;
-            if (options.Source.Type == "SqlServer" ||
-                options.Source.Type == "PostgreSQL")
-            {
-                consumer = CreateDatabaseConsumer(in options);
-            }
-            else if (options.Source.Type == "RabbitMQ")
-            {
-                Type serviceType = GetTypeByName(options.Source.Consumer);
-                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Source.Options);
-            }
+            object? consumer = CreateConsumerService(options.Source, out errors);
 
-            object producer = null;
-            if (options.Target.Type == "SqlServer" ||
-                options.Target.Type == "PostgreSQL")
+            if (consumer == null) { return null!; }
+            
+            object? producer = CreateProducerService(options.Target, out errors);
+
+            if (producer == null) { return null!; }
+
+            List<object>? handlers = CreateMessageHandlers(options, out errors);
+
+            if (handlers == null) { return null!; }
+
+            if (!AssemblePipeline(in consumer, in handlers, in producer, out errors))
             {
-                producer = CreateDatabaseProducer(in options);
-            }
-            else if (options.Target.Type == "RabbitMQ")
-            {
-                Type serviceType = GetTypeByName(options.Target.Producer);
-                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, options.Target.Options);
+                return null!;
             }
 
-            // 3.0 Create handlers
-            List<object> handlers = new List<object>();
-            foreach (string handlerName in options.Handlers)
-            {
-                Type serviceType = GetTypeByName(handlerName);
-                object handler = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
-                handlers.Add(handler);
-            }
-            handlers.Add(producer);
-
-            // 4.0 Assemble pipeline
-
-            MethodInfo linkTo;
-            object current = consumer;
-            foreach (object handler in handlers)
-            {
-                linkTo = current.GetType().GetMethod("LinkTo");
-                linkTo.Invoke(current, new object[] { handler });
-                current = handler;
-            }
-
-            // 5.0 Create pipeline
-            string pipelineName = options.Name;
-            Type inputMessageType = GetTypeByName(options.Source.Message);
-            Type pipelineType = typeof(Pipeline<>).MakeGenericType(inputMessageType);
-            object pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType, pipelineName, consumer);
-
-            return pipeline as IPipeline;
+            return CreatePipeline(options, in consumer, out errors);
         }
-        private static Type GetTypeByName(string name)
+
+        private object CreateConsumerService(in SourceOptions options, out List<string> errors)
         {
-            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            object? consumer = null;
+
+            if (options.Type == "SqlServer" || options.Type == "PostgreSQL")
             {
-                //TODO: load assemblies which are not referenced or not loaded yet
+                consumer = CreateDatabaseConsumer(options, out errors);
+            }
+            else if (options.Type == "RabbitMQ" || options.Type == "ApacheKafka")
+            {
+                consumer = CreateBrokerConsumer(options, out errors);
+            }
+            else
+            {
+                errors = new List<string>() { $"Unknown source type: {options.Type}" };
+            }
 
-                Type type = assembly.GetType(name);
+            return consumer!;
+        }
+        private object CreateBrokerConsumer(in SourceOptions options, out List<string> errors)
+        {
+            errors = new List<string>();
 
-                if (type is not null)
+            Type? serviceType = null;
+
+            if (string.IsNullOrWhiteSpace(options.Consumer))
+            {
+                if (options.Type == "RabbitMQ")
                 {
-                    return type;
+                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.RabbitMQ.Consumer");
+                }
+                else if (options.Type == "ApacheKafka")
+                {
+                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.ApacheKafka.Consumer");
+                }
+                else
+                {
+                    errors.Add($"Default consumer is not found: [{options.Type}]");
                 }
             }
-
-            return null;
-        }
-        private object CreateDatabaseConsumer(in PipelineOptions options)
-        {
-            // 1.0 Create consumer data mapper
-            Type mapperType = GetTypeByName(options.Source.DataMapper);
-            DatabaseOptions databaseOptions = CreateDatabaseOptions(options.Source.Type, options.Source.Options);
-            object mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
-
-            // 1.1 Create consumer
-            Type genericType = GetTypeByName(options.Source.Consumer);
-            Type messageType = GetTypeByName(options.Source.Message);
-            Type serviceType = genericType.MakeGenericType(messageType);
-            object consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, databaseOptions, mapper);
-
-            return consumer;
-        }
-        private object CreateDatabaseProducer(in PipelineOptions options)
-        {
-            // 2.0 Create producer data mapper
-            Type mapperType = GetTypeByName(options.Target.DataMapper);
-            DatabaseOptions databaseOptions = CreateDatabaseOptions(options.Target.Type, options.Target.Options);
-            object mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, databaseOptions);
-
-            // 2.1 Create producer
-            Type genericType = GetTypeByName(options.Target.Producer);
-            Type messageType = GetTypeByName(options.Target.Message);
-            Type serviceType = genericType.MakeGenericType(messageType);
-            object producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, databaseOptions, mapper);
-
-            return producer;
-        }
-        private static DatabaseOptions CreateDatabaseOptions(string provider, Dictionary<string, string> settings)
-        {
-            if (!settings.TryGetValue(nameof(DatabaseOptions.ConnectionString), out string connectionString))
+            else
             {
-                throw new ArgumentException(nameof(DatabaseOptions.ConnectionString));
+                serviceType = ReflectionUtilities.GetTypeByName(options.Consumer);
             }
 
-            if (!settings.TryGetValue(nameof(DatabaseOptions.QueueObject), out string queueObject))
+            if (serviceType == null)
             {
-                throw new ArgumentException(nameof(DatabaseOptions.QueueObject));
+                if (errors.Count == 0)
+                {
+                    errors.Add($"Consumer type is not found: [{options.Type}] {options.Consumer}");
+                }
+
+                return null!;
             }
 
-            if (!settings.TryGetValue(nameof(DatabaseOptions.MessagesPerTransaction), out string messagesPerTransaction))
+            object? consumer = null;
+
+            try
             {
-                messagesPerTransaction = "0";
+                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Options);
+            }
+            catch (Exception error)
+            {
+                errors.Add($"Failed to create consumer: [{options.Type}] {error.Message}");
             }
 
-            DatabaseProvider databaseProvider = (provider == "SqlServer"
+            return consumer!;
+        }
+        private object CreateDatabaseConsumer(in SourceOptions options, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            DatabaseProvider databaseProvider =
+                (options.Type == "SqlServer"
                 ? DatabaseProvider.SQLServer
                 : DatabaseProvider.PostgreSQL);
 
-            if (!new MetadataService()
-                .UseConnectionString(connectionString)
-                .UseDatabaseProvider(databaseProvider)
-                .TryOpenInfoBase(out InfoBase infoBase, out string error))
+            if (!options.Options.TryGetValue("ConnectionString", out string? connectionString)
+                || string.IsNullOrWhiteSpace(connectionString))
             {
-                Console.WriteLine(error);
-                throw new InvalidOperationException(error);
+                errors.Add($"Database connection string is not defined.");
+                
+                return null!;
             }
 
-            ApplicationObject queue = infoBase.GetApplicationObjectByName(queueObject);
+            IMetadataService metadataService = new MetadataService()
+                .UseDatabaseProvider(databaseProvider)
+                .UseConnectionString(connectionString);
 
-            DatabaseOptions options = new()
+            DatabaseConsumerBuilder builder = new(_serviceProvider, metadataService);
+
+            return builder.Build(options, out errors);
+        }
+
+        private object CreateProducerService(in TargetOptions options, out List<string> errors)
+        {
+            object? consumer = null;
+
+            if (options.Type == "SqlServer" || options.Type == "PostgreSQL")
             {
-                ConnectionString = connectionString,
-                DatabaseProvider = provider,
-                YearOffset = infoBase.YearOffset,
-                QueueTable = queue.TableName,
-                SequenceObject = queue.TableName + "_so",
-                MessagesPerTransaction = int.Parse(messagesPerTransaction)
-            };
-
-            foreach (MetadataProperty property in queue.Properties)
+                consumer = CreateDatabaseProducer(options, out errors);
+            }
+            else if (options.Type == "RabbitMQ" || options.Type == "ApacheKafka")
             {
-                DatabaseField field = property.Fields[0];
+                consumer = CreateBrokerProducer(options, out errors);
+            }
+            else
+            {
+                errors = new List<string>() { $"Unknown target type: {options.Type}" };
+            }
 
-                if (property.Name == "НомерСообщения" ||
-                    property.Name == "МоментВремени" ||
-                    property.Name == "Идентификатор")
+            return consumer!;
+        }
+        private object CreateBrokerProducer(in TargetOptions options, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            Type? serviceType = null;
+
+            if (string.IsNullOrWhiteSpace(options.Producer))
+            {
+                if (options.Type == "RabbitMQ")
                 {
-                    options.OrderColumns.Add(property.Name, field.Name);
+                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.RabbitMQ.Producer");
+                }
+                else if (options.Type == "ApacheKafka")
+                {
+                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.ApacheKafka.Producer");
+                }
+                else
+                {
+                    errors.Add($"Default producer is not found: [{options.Type}]");
+                }
+            }
+            else
+            {
+                serviceType = ReflectionUtilities.GetTypeByName(options.Producer);
+            }
+
+            if (serviceType == null)
+            {
+                if (errors.Count == 0)
+                {
+                    errors.Add($"Producer type is not found: [{options.Type}] {options.Producer}");
                 }
 
-                options.TableColumns.Add(property.Name, field.Name);
+                return null!;
             }
 
-            return options;
+            object? producer = null;
+
+            try
+            {
+                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Options);
+            }
+            catch (Exception error)
+            {
+                errors.Add($"Failed to create producer: [{options.Type}] {error.Message}");
+            }
+
+            return producer!;
+        }
+        private object CreateDatabaseProducer(in TargetOptions options, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            DatabaseProvider databaseProvider =
+                (options.Type == "SqlServer"
+                ? DatabaseProvider.SQLServer
+                : DatabaseProvider.PostgreSQL);
+
+            if (!options.Options.TryGetValue("ConnectionString", out string? connectionString)
+                || string.IsNullOrWhiteSpace(connectionString))
+            {
+                errors.Add($"Database connection string is not defined.");
+
+                return null!;
+            }
+
+            IMetadataService metadataService = new MetadataService()
+                .UseDatabaseProvider(databaseProvider)
+                .UseConnectionString(connectionString);
+
+            DatabaseProducerBuilder builder = new(_serviceProvider, metadataService);
+
+            return builder.Build(options, out errors);
+        }
+
+        private List<object> CreateMessageHandlers(PipelineOptions options, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            List<object> handlers = new();
+
+            foreach (string typeName in options.Handlers)
+            {
+                object? handler = CreateMessageHandler(typeName, in errors);
+
+                if (handler == null)
+                {
+                    return null!;
+                }
+
+                handlers.Add(handler);
+            }
+            
+            return handlers;
+        }
+        private object CreateMessageHandler(string name, in List<string> errors)
+        {
+            Type handlerType = ReflectionUtilities.GetTypeByName(name);
+
+            if (handlerType == null)
+            {
+                errors.Add($"Handler type is not found: {name}");
+
+                return null!;
+            }
+
+            object? handler = null;
+
+            try
+            {
+                handler = ActivatorUtilities.CreateInstance(_serviceProvider, handlerType);
+            }
+            catch (Exception error)
+            {
+                errors.Add($"Failed to create handler [{name}]: {error.Message}");
+            }
+
+            return handler!;
+        }
+
+        private bool AssemblePipeline(in object consumer, in List<object> handlers, in object producer, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            handlers.Add(producer);
+
+            object current = consumer;
+
+            foreach (object handler in handlers)
+            {
+                Type handlerType = current.GetType();
+
+                MethodInfo? linkTo = handlerType.GetMethod("LinkTo");
+
+                if (linkTo == null)
+                {
+                    errors.Add($"Method \"LinkTo\" is not found on type {handlerType}");
+
+                    return false;
+                }
+
+                try
+                {
+                    linkTo.Invoke(current, new object[] { handler });
+                }
+                catch (Exception error)
+                {
+                    errors.Add($"Failed to link {current.GetType()} to {handlerType}: {error.Message}");
+
+                    return false;
+                }
+
+                current = handler;
+            }
+            
+            return true;
+        }
+
+        private IPipeline CreatePipeline(PipelineOptions options, in object consumer, out List<string> errors)
+        {
+            errors = new List<string>();
+
+            Type consumerType = consumer.GetType();
+
+            Type? baseType = consumerType.BaseType;
+
+            if (baseType == null || baseType.GetGenericTypeDefinition() != typeof(Source<>))
+            {
+                errors.Add($"Consumer does not inherit from DaJet.Flow.Source<TMessage> abstract class.");
+
+                return null!;
+            }
+
+            Type messageType = baseType.GetGenericArguments()[0];
+
+
+            Type? pipelineType = null;
+
+            try
+            {
+                pipelineType = typeof(Pipeline<>).MakeGenericType(messageType);
+            }
+            catch (Exception error)
+            {
+                errors.Add($"Failed to create type Pipeline<{messageType}>: {error.Message}");
+            }
+
+            if (pipelineType == null)
+            {
+                return null!;
+            }
+
+            object? pipeline = null;
+
+            try
+            {
+                pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType, options.Name, consumer);
+            }
+            catch (Exception error)
+            {
+                errors.Add($"Failed to create pipeline [{options.Name}]: {error.Message}");
+            }
+
+            if (pipeline == null)
+            {
+                return null!;
+            }
+
+            return (pipeline as IPipeline)!;
         }
     }
 }

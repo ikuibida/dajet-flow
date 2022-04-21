@@ -18,7 +18,7 @@ namespace DaJet.Flow.Transformers
                 MessageBody = input.MessageBody
             };
 
-            Dictionary<string, string> headers;
+            Dictionary<string, string>? headers;
 
             try
             {
@@ -29,7 +29,7 @@ namespace DaJet.Flow.Transformers
                 throw new FormatException($"Message headers format exception. Message number: {{{input.MessageNumber}}}. Error message: {error.Message}");
             }
 
-            if (headers is not null && headers.TryGetValue("Sender", out string sender))
+            if (headers is not null && headers.TryGetValue("Sender", out string? sender) && !string.IsNullOrEmpty(sender))
             {
                 output.Sender = sender;
             }
