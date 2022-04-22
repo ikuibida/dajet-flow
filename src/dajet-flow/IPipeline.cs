@@ -2,22 +2,23 @@
 {
     public interface IPipeline
     {
+        PipelineOptions Options { get; }
         void Execute();
         //void Suspend();
         //void Continue();
-        //void Close();
-        string Name { get; }
+        //void Close(); Dispose()
     }
     public sealed class Pipeline<TSource> : IPipeline
     {
+        private readonly PipelineOptions _options;
         private readonly ISource<TSource> _source;
         private readonly CancellationTokenSource _cancellation = new();
-        public Pipeline(string name, ISource<TSource> source)
+        public Pipeline(PipelineOptions options, ISource<TSource> source)
         {
-            Name = name;
-            _source = source;
+            _source = source ?? throw new ArgumentNullException(nameof(source)); ;
+            _options = options ?? throw new ArgumentNullException(nameof(options));
         }
-        public string Name { get; private set; }
+        public PipelineOptions Options { get { return _options; } }
         public void Execute()
         {
             using (_source)

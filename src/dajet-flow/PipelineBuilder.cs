@@ -1,5 +1,5 @@
-﻿using DaJet.Metadata;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using System.Reflection;
 
 namespace DaJet.Flow
@@ -9,28 +9,47 @@ namespace DaJet.Flow
         private readonly IServiceProvider _serviceProvider;
         public PipelineBuilder(IServiceProvider serviceProvider)
         {
-            _serviceProvider = serviceProvider;
+            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
-        public IPipeline Build(PipelineOptions options, out List<string> errors)
+        public IPipeline Build(PipelineOptions options)
         {
+            List<string> errors;
+
             object? consumer = CreateConsumerService(options.Source, out errors);
 
-            if (consumer == null) { return null!; }
+            if (consumer == null) { LogErrors(in errors); return null!; }
             
             object? producer = CreateProducerService(options.Target, out errors);
 
-            if (producer == null) { return null!; }
+            if (producer == null) { LogErrors(in errors); return null!; }
 
             List<object>? handlers = CreateMessageHandlers(options, out errors);
 
-            if (handlers == null) { return null!; }
+            if (handlers == null) { LogErrors(in errors); return null!; }
 
             if (!AssemblePipeline(in consumer, in handlers, in producer, out errors))
             {
-                return null!;
+                LogErrors(in errors); return null!;
             }
 
-            return CreatePipeline(options, in consumer, out errors);
+            IPipeline pipeline = CreatePipeline(options, in consumer, out errors);
+
+            if (pipeline == null) { LogErrors(in errors); return null!; }
+
+            ILogger<PipelineBuilder> logger = _serviceProvider.GetService<ILogger<PipelineBuilder>>()!;
+
+            logger.LogInformation($"Pipeline [{pipeline.Options.Name}] is built successfully.");
+
+            return pipeline;
+        }
+        private void LogErrors(in List<string> errors)
+        {
+            ILogger<PipelineBuilder> logger = _serviceProvider.GetService<ILogger<PipelineBuilder>>()!;
+
+            foreach (string error in errors)
+            {
+                logger.LogError(error);
+            }
         }
 
         private object CreateConsumerService(in SourceOptions options, out List<string> errors)
@@ -92,7 +111,12 @@ namespace DaJet.Flow
 
             try
             {
-                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Options);
+                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
+
+                if (consumer is IConfigurable configurable)
+                {
+                    configurable.Configure(options.Options);
+                }
             }
             catch (Exception error)
             {
@@ -103,48 +127,29 @@ namespace DaJet.Flow
         }
         private object CreateDatabaseConsumer(in SourceOptions options, out List<string> errors)
         {
-            errors = new List<string>();
-
-            DatabaseProvider databaseProvider =
-                (options.Type == "SqlServer"
-                ? DatabaseProvider.SQLServer
-                : DatabaseProvider.PostgreSQL);
-
-            if (!options.Options.TryGetValue("ConnectionString", out string? connectionString)
-                || string.IsNullOrWhiteSpace(connectionString))
-            {
-                errors.Add($"Database connection string is not defined.");
-                
-                return null!;
-            }
-
-            IMetadataService metadataService = new MetadataService()
-                .UseDatabaseProvider(databaseProvider)
-                .UseConnectionString(connectionString);
-
-            DatabaseConsumerBuilder builder = new(_serviceProvider, metadataService);
+            DatabaseConsumerBuilder builder = _serviceProvider.GetRequiredService<DatabaseConsumerBuilder>();
 
             return builder.Build(options, out errors);
         }
 
         private object CreateProducerService(in TargetOptions options, out List<string> errors)
         {
-            object? consumer = null;
+            object? producer = null;
 
             if (options.Type == "SqlServer" || options.Type == "PostgreSQL")
             {
-                consumer = CreateDatabaseProducer(options, out errors);
+                producer = CreateDatabaseProducer(options, out errors);
             }
             else if (options.Type == "RabbitMQ" || options.Type == "ApacheKafka")
             {
-                consumer = CreateBrokerProducer(options, out errors);
+                producer = CreateBrokerProducer(options, out errors);
             }
             else
             {
                 errors = new List<string>() { $"Unknown target type: {options.Type}" };
             }
 
-            return consumer!;
+            return producer!;
         }
         private object CreateBrokerProducer(in TargetOptions options, out List<string> errors)
         {
@@ -186,7 +191,12 @@ namespace DaJet.Flow
 
             try
             {
-                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Options);
+                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
+
+                if (producer is IConfigurable configurable)
+                {
+                    configurable.Configure(options.Options);
+                }
             }
             catch (Exception error)
             {
@@ -197,26 +207,7 @@ namespace DaJet.Flow
         }
         private object CreateDatabaseProducer(in TargetOptions options, out List<string> errors)
         {
-            errors = new List<string>();
-
-            DatabaseProvider databaseProvider =
-                (options.Type == "SqlServer"
-                ? DatabaseProvider.SQLServer
-                : DatabaseProvider.PostgreSQL);
-
-            if (!options.Options.TryGetValue("ConnectionString", out string? connectionString)
-                || string.IsNullOrWhiteSpace(connectionString))
-            {
-                errors.Add($"Database connection string is not defined.");
-
-                return null!;
-            }
-
-            IMetadataService metadataService = new MetadataService()
-                .UseDatabaseProvider(databaseProvider)
-                .UseConnectionString(connectionString);
-
-            DatabaseProducerBuilder builder = new(_serviceProvider, metadataService);
+            DatabaseProducerBuilder builder = _serviceProvider.GetRequiredService<DatabaseProducerBuilder>();
 
             return builder.Build(options, out errors);
         }
@@ -227,9 +218,9 @@ namespace DaJet.Flow
 
             List<object> handlers = new();
 
-            foreach (string typeName in options.Handlers)
+            foreach (HandlerOptions option in options.Handlers)
             {
-                object? handler = CreateMessageHandler(typeName, in errors);
+                object? handler = CreateMessageHandler(option, in errors);
 
                 if (handler == null)
                 {
@@ -241,13 +232,13 @@ namespace DaJet.Flow
             
             return handlers;
         }
-        private object CreateMessageHandler(string name, in List<string> errors)
+        private object CreateMessageHandler(HandlerOptions options, in List<string> errors)
         {
-            Type handlerType = ReflectionUtilities.GetTypeByName(name);
+            Type handlerType = ReflectionUtilities.GetTypeByName(options.Type);
 
             if (handlerType == null)
             {
-                errors.Add($"Handler type is not found: {name}");
+                errors.Add($"Handler type is not found: {options.Type}");
 
                 return null!;
             }
@@ -257,10 +248,15 @@ namespace DaJet.Flow
             try
             {
                 handler = ActivatorUtilities.CreateInstance(_serviceProvider, handlerType);
+
+                if (handler is IConfigurable configurable)
+                {
+                    configurable.Configure(options.Options);
+                }
             }
             catch (Exception error)
             {
-                errors.Add($"Failed to create handler [{name}]: {error.Message}");
+                errors.Add($"Failed to create handler [{options.Type}]: {error.Message}");
             }
 
             return handler!;
@@ -342,7 +338,7 @@ namespace DaJet.Flow
 
             try
             {
-                pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType, options.Name, consumer);
+                pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType, options, consumer);
             }
             catch (Exception error)
             {

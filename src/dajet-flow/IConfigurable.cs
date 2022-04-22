@@ -1,7 +1,7 @@
 ﻿namespace DaJet.Flow
 {
-    public interface IConfigurable<TOptions> where TOptions : class, new()
+    public interface IConfigurable
     {
-        void Configure(in TOptions options);
+        void Configure(Dictionary<string, string> options);
     }
 }

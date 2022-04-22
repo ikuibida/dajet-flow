@@ -1,8 +1,7 @@
 ﻿using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 
-namespace DaJet.Flow.App
+namespace DaJet.Flow
 {
     public sealed class DaJetFlowService : BackgroundService
     {
@@ -17,12 +16,18 @@ namespace DaJet.Flow.App
         }
         protected override Task ExecuteAsync(CancellationToken cancellationToken)
         {
+            if (_pipeline == null)
+            {
+                return Task.CompletedTask;
+            }
+
             _cancellationToken = cancellationToken;
+
             return Task.Factory.StartNew(DoWork, TaskCreationOptions.LongRunning);
         }
         private void DoWork()
         {
-            _logger.LogInformation($"Pipeline [{_pipeline.Name}] is running ...");
+            _logger.LogInformation($"Pipeline [{_pipeline.Options.Name}] is running ...");
 
             while (!_cancellationToken.IsCancellationRequested)
             {
@@ -30,9 +35,9 @@ namespace DaJet.Flow.App
                 {
                     TryDoWork();
 
-                    //_logger.LogInformation($"{_pipeline.Name} sleep 30 seconds ...");
+                    _logger.LogInformation($"[{_pipeline.Options.Name}] is idle for {_pipeline.Options.IdleTime} seconds ...");
 
-                    Task.Delay(TimeSpan.FromSeconds(10)).Wait(_cancellationToken);
+                    Task.Delay(TimeSpan.FromSeconds(_pipeline.Options.IdleTime)).Wait(_cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -40,19 +45,15 @@ namespace DaJet.Flow.App
                 }
                 catch (Exception error)
                 {
-                    _logger.LogError($"{_pipeline.Name}{Environment.NewLine}{error}", string.Empty);
+                    _logger.LogError($"{_pipeline.Options.Name}{Environment.NewLine}{error}", string.Empty);
                 }
             }
 
-            _logger.LogInformation($"Pipeline [{_pipeline.Name}] is stopped.");
+            _logger.LogInformation($"Pipeline [{_pipeline.Options.Name}] is stopped.");
         }
         private void TryDoWork()
         {
-            Stopwatch watch = new();
-            watch.Start();
             _pipeline.Execute();
-            watch.Stop();
-            //_logger.LogWarning($"{_pipeline.Name} elapsed in {watch.ElapsedMilliseconds} ms");
         }
     }
 }

@@ -1,27 +1,16 @@
-﻿using DaJet.Metadata;
-using DaJet.Metadata.Model;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 
 namespace DaJet.Flow
 {
-    internal sealed class DatabaseConsumerBuilder
+    public sealed class DatabaseConsumerBuilder
     {
         private readonly IServiceProvider _serviceProvider;
-        private readonly IMetadataService _metadataService;
-        internal DatabaseConsumerBuilder(IServiceProvider serviceProvider, IMetadataService metadataService)
+        public DatabaseConsumerBuilder(IServiceProvider serviceProvider)
         {
             _serviceProvider = serviceProvider;
-            _metadataService = metadataService;
         }
-        internal object Build(SourceOptions options, out List<string> errors)
+        public object Build(SourceOptions options, out List<string> errors)
         {
-            object mapper = CreateDataMapper(options, out errors);
-            
-            if (mapper == null)
-            {
-                return null!;
-            }
-
             Type serviceType = GetDatabaseConsumerType(options, out errors);
 
             if (serviceType == null)
@@ -33,7 +22,12 @@ namespace DaJet.Flow
 
             try
             {
-                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType, _serviceProvider, options.Options, mapper);
+                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
+
+                if (consumer is IConfigurable configurable)
+                {
+                    configurable.Configure(options.Options);
+                }
             }
             catch (Exception error)
             {
@@ -42,123 +36,6 @@ namespace DaJet.Flow
 
             return consumer!;
         }
-
-        private DataMapperOptions CreateDataMapperOptions(Dictionary<string, string> options, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            DataMapperOptions mapperOptions = new DataMapperOptions();
-
-            if (options.TryGetValue(nameof(DataMapperOptions.MessagesPerTransaction), out string? messagesPerTransaction)
-                && !string.IsNullOrWhiteSpace(messagesPerTransaction)
-                && int.TryParse(messagesPerTransaction, out int parameterValue))
-            {
-                mapperOptions.MessagesPerTransaction = (parameterValue > 0 ? parameterValue : 1000);
-            }
-
-            if (!options.TryGetValue(nameof(DataMapperOptions.QueueObject), out string? queueObject)
-                || string.IsNullOrWhiteSpace(queueObject))
-            {
-                return mapperOptions;
-            }
-
-            if (!_metadataService.TryOpenInfoBase(out InfoBase infoBase, out string error))
-            {
-                errors.Add(error);
-                
-                return null!;
-            }
-
-            mapperOptions.YearOffset = infoBase.YearOffset;
-
-            ApplicationObject queue = infoBase.GetApplicationObjectByName(queueObject);
-
-            if (queue == null)
-            {
-                errors.Add($"Queue object [{queueObject}] is not found.");
-                
-                return null!;
-            }
-
-            mapperOptions.TableName = queue.TableName;
-            mapperOptions.SequenceName = queue.TableName + "_so";
-
-            foreach (MetadataProperty property in queue.Properties)
-            {
-                if (property.Fields != null && property.Fields.Count == 1)
-                {
-                    DatabaseField field = property.Fields[0];
-
-                    mapperOptions.TableColumns.Add(property.Name, field.Name);
-                }
-            }
-
-            return mapperOptions;
-        }
-
-        private Type GetDataMapperType(SourceOptions options, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            Type? mapperType = null;
-
-            if (string.IsNullOrWhiteSpace(options.DataMapper))
-            {
-                if (options.Type == "SqlServer")
-                {
-                    mapperType = ReflectionUtilities.GetTypeByName("DaJet.SqlServer.DataMappers.OutgoingMessageDataMapper");
-                }
-                else if (options.Type == "PostgreSQL")
-                {
-                    mapperType = ReflectionUtilities.GetTypeByName("DaJet.PostgreSQL.DataMappers.OutgoingMessageDataMapper");
-                }
-                else
-                {
-                    errors.Add($"Default data mapper is not found: [{options.Type}]");
-                }
-            }
-            else
-            {
-                mapperType = ReflectionUtilities.GetTypeByName(options.DataMapper);
-            }
-
-            if (mapperType == null)
-            {
-                errors.Add($"Data mapper is not found: [{options.Type}] {options.DataMapper}");
-            }
-
-            return mapperType!;
-        }
-        private object CreateDataMapper(SourceOptions options, out List<string> errors)
-        {
-            DataMapperOptions? mapperOptions = CreateDataMapperOptions(options.Options, out errors);
-
-            if (mapperOptions == null)
-            {
-                return null!;
-            }
-
-            Type? mapperType = GetDataMapperType(options, out errors);
-            
-            if (mapperType == null)
-            {
-                return null!;
-            }
-
-            object? mapper = null;
-
-            try
-            {
-                mapper = ActivatorUtilities.CreateInstance(_serviceProvider, mapperType, mapperOptions);
-            }
-            catch (Exception error)
-            {
-                errors.Add($"Failed to create data mapper: [{options.Type}] {error.Message}");
-            }
-
-            return mapper!;
-        }
-        
         private Type GetConsumerType(SourceOptions options, out List<string> errors)
         {
             errors = new List<string>();

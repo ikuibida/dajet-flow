@@ -1,7 +1,7 @@
-﻿using Microsoft.Extensions.Configuration;
+﻿using DaJet.Metadata;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Serilog;
 using Serilog.Events;
@@ -68,7 +68,7 @@ namespace DaJet.Flow.App
                 })
                 .ConfigureServices(ConfigureServices)
                 .UseSerilog();
-                // TODO: .UseDaJetMetadataCache();
+            // TODO: IHostBuilder.UseDaJetMetadataCache();
         }
         private static void ConfigureServices(HostBuilderContext context, IServiceCollection services)
         {
@@ -80,8 +80,12 @@ namespace DaJet.Flow.App
                 .AddSingleton(Options.Create(settings))
                 .Configure<HostOptions>(context.Configuration.GetSection(nameof(HostOptions)));
 
+            services.AddTransient<IMetadataService, MetadataService>(); // TODO: IHostBuilder.UseDaJetMetadataCache();
+
             services.AddSingleton<PipelineBuilder>();
             services.AddTransient(typeof(Pipeline<>));
+            services.AddSingleton<DatabaseConsumerBuilder>();
+            services.AddSingleton<DatabaseProducerBuilder>();
 
             services.AddTransient(typeof(RabbitMQ.Consumer));
             services.AddTransient(typeof(RabbitMQ.Producer));
@@ -89,6 +93,11 @@ namespace DaJet.Flow.App
             services.AddTransient(typeof(SqlServer.Producer<>));
             services.AddTransient(typeof(PostgreSQL.Consumer<>));
             services.AddTransient(typeof(PostgreSQL.Producer<>));
+
+            services.AddTransient<SqlServer.DataMappers.OutgoingMessageDataMapper>();
+            services.AddTransient<SqlServer.DataMappers.IncomingMessageDataMapper>();
+            services.AddTransient<PostgreSQL.DataMappers.OutgoingMessageDataMapper>();
+            services.AddTransient<PostgreSQL.DataMappers.IncomingMessageDataMapper>();
 
             services.AddSingleton<RabbitMQ.DbToRmqTransformer>();
             services.AddSingleton<RabbitMQ.RmqToDbTransformer>();
@@ -103,25 +112,13 @@ namespace DaJet.Flow.App
 
                 services.AddSingleton<IHostedService>(serviceProvider =>
                 {
-                    ILogger<DaJetFlowService> logger = serviceProvider.GetRequiredService<ILogger<DaJetFlowService>>();
-
                     PipelineBuilder builder = serviceProvider.GetRequiredService<PipelineBuilder>();
 
-                    IPipeline pipeline = builder.Build(options, out List<string> errors);
+                    IPipeline pipeline = builder.Build(options);
 
-                    if (pipeline == null)
-                    {
-                        foreach (string error in errors)
-                        {
-                            logger.LogError(error);
-                        }
-                    }
-                    else
-                    {
-                        logger.LogInformation($"Pipeline [{pipeline.Name}] is built.");
-                    }
-
-                    return new DaJetFlowService(pipeline, logger);
+                    object service = ActivatorUtilities.CreateInstance(serviceProvider, typeof(DaJetFlowService), pipeline);
+                    
+                    return (service as IHostedService)!;
                 });
             }
         }

@@ -9,9 +9,9 @@ using System.Text.Json;
 
 namespace DaJet.RabbitMQ
 {
-    public sealed class Consumer : Source<Message>
+    public sealed class Consumer : Source<Message>, IConfigurable
     {
-        private readonly BrokerOptions _options;
+        private BrokerOptions? _options = new();
 
         private CancellationToken _token;
 
@@ -25,19 +25,20 @@ namespace DaJet.RabbitMQ
         private int _consumed = 0;
         private Stopwatch watch = new Stopwatch();
 
-        [ActivatorUtilitiesConstructor]
-        public Consumer(IServiceProvider serviceProvider, Dictionary<string, string> options)
+        [ActivatorUtilitiesConstructor] public Consumer(IServiceProvider serviceProvider)
         {
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-
+            
+            _logger = _serviceProvider.GetRequiredService<ILogger<Consumer>>();
+        }
+        public void Configure(Dictionary<string, string> options)
+        {
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
             }
 
             _options = BrokerOptions.CreateOptions(options);
-
-            _logger = _serviceProvider.GetRequiredService<ILogger<Consumer>>();
         }
         public override void Pump(CancellationToken token)
         {

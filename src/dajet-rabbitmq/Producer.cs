@@ -7,9 +7,9 @@ using System.Text;
 
 namespace DaJet.RabbitMQ
 {
-    public sealed class Producer : Target<Message>
+    public sealed class Producer : Target<Message>, IConfigurable
     {
-        private readonly BrokerOptions _options;
+        private BrokerOptions? _options = new();
 
         private readonly IServiceProvider _serviceProvider;
         private readonly ILogger<Producer> _logger;
@@ -19,19 +19,20 @@ namespace DaJet.RabbitMQ
         private IBasicProperties? _properties;
         private bool ConnectionIsBlocked = false;
 
-        [ActivatorUtilitiesConstructor]
-        public Producer(IServiceProvider serviceProvider, Dictionary<string, string> options)
+        [ActivatorUtilitiesConstructor] public Producer(IServiceProvider serviceProvider)
         {
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-
+            
+            _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
+        }
+        public void Configure(Dictionary<string, string> options)
+        {
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
             }
 
             _options = BrokerOptions.CreateOptions(options);
-
-            _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
         }
 
         #region "RABBITMQ CONNECTION AND CHANNEL SETUP"

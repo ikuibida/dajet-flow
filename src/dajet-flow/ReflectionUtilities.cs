@@ -2,9 +2,9 @@
 
 namespace DaJet.Flow
 {
-    internal static class ReflectionUtilities
+    public static class ReflectionUtilities
     {
-        internal static Type GetTypeByName(string name)
+        public static Type GetTypeByName(string name)
         {
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
