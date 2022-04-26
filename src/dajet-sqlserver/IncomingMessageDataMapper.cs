@@ -1,5 +1,5 @@
-﻿using DaJet.Flow;
-using DaJet.Flow.Contracts;
+﻿using DaJet.Flow.Contracts;
+using DaJet.Flow.Data;
 using Microsoft.Data.SqlClient;
 using System.Data;
 using System.Data.Common;
@@ -8,8 +8,8 @@ namespace DaJet.SqlServer.DataMappers
 {
     public sealed class IncomingMessageDataMapper : IDataMapper<IncomingMessage>
     {
-        private readonly DataMapperOptions _options;
-        public IncomingMessageDataMapper(DataMapperOptions options)
+        private DataMapperOptions? _options;
+        public void Configure(DataMapperOptions options)
         {
             _options = options;
         }

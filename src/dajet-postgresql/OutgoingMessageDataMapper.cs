@@ -1,5 +1,5 @@
-﻿using DaJet.Flow;
-using DaJet.Flow.Contracts;
+﻿using DaJet.Flow.Contracts;
+using DaJet.Flow.Data;
 using Npgsql;
 using NpgsqlTypes;
 using System.Data;
@@ -10,8 +10,8 @@ namespace DaJet.PostgreSQL.DataMappers
 {
     public sealed class OutgoingMessageDataMapper : IDataMapper<OutgoingMessage>
     {
-        private readonly DataMapperOptions _options;
-        public OutgoingMessageDataMapper(DataMapperOptions options)
+        private DataMapperOptions? _options;
+        public void Configure(DataMapperOptions options)
         {
             _options = options;
         }

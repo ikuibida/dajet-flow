@@ -1,6 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 
-namespace DaJet.Flow
+namespace DaJet.Flow.Data
 {
     public sealed class DatabaseProducerBuilder
     {

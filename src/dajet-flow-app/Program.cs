@@ -1,4 +1,5 @@
-﻿using DaJet.Metadata;
+﻿using DaJet.Flow.Data;
+using DaJet.Metadata;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -86,6 +87,7 @@ namespace DaJet.Flow.App
             services.AddTransient(typeof(Pipeline<>));
             services.AddSingleton<DatabaseConsumerBuilder>();
             services.AddSingleton<DatabaseProducerBuilder>();
+            services.AddSingleton<DataMapperOptionsBuilder>();
 
             services.AddTransient(typeof(RabbitMQ.Consumer));
             services.AddTransient(typeof(RabbitMQ.Producer));
@@ -94,8 +96,10 @@ namespace DaJet.Flow.App
             services.AddTransient(typeof(PostgreSQL.Consumer<>));
             services.AddTransient(typeof(PostgreSQL.Producer<>));
 
+            services.AddTransient<SqlServer.DataMapperFactory>();
             services.AddTransient<SqlServer.DataMappers.OutgoingMessageDataMapper>();
             services.AddTransient<SqlServer.DataMappers.IncomingMessageDataMapper>();
+            services.AddTransient<PostgreSQL.DataMapperFactory>();
             services.AddTransient<PostgreSQL.DataMappers.OutgoingMessageDataMapper>();
             services.AddTransient<PostgreSQL.DataMappers.IncomingMessageDataMapper>();
 
