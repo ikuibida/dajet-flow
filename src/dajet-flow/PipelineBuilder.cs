@@ -1,5 +1,6 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Reflection;
 
 namespace DaJet.Flow
@@ -33,83 +34,36 @@ namespace DaJet.Flow
                 throw new InvalidOperationException("Pipeline options are not provided.");
             }
 
-            Type sourceType = ReflectionUtilities.GetTypeByNameOrFail(_options!.Source.Type);
+            PipelineServiceProvider serviceProvider = _serviceProvider.GetRequiredService<PipelineServiceProvider>();
 
+            Type sourceType = ResolveServiceType(_options.Source.Type, _options.Source.Message);
             Type messageType = GetSourceMessageType(sourceType);
-            
-            IPipeline pipeline = CreatePipeline(messageType);
-            
-            pipeline.Configure(_options);
+            Type pipelineType = typeof(Pipeline<>).MakeGenericType(messageType);
+            Type sourceInterfaceType = typeof(ISource<>).MakeGenericType(messageType);
+
+            serviceProvider.Services.AddOptions();
+            serviceProvider.Services.AddSingleton(Options.Create(_options));
+            serviceProvider.Services.AddSingleton(typeof(IPipeline), pipelineType);
+            serviceProvider.Services.AddSingleton(sourceInterfaceType, sourceType);
+
+            //IPipeline pipeline = serviceProvider.GetRequiredService<IPipeline>();
 
             try
             {
-                List<object> services = CreatePipelineServices(pipeline.Services);
+                List<object> services = CreatePipelineServices(sourceInterfaceType, serviceProvider);
                 
                 object source = AssemblePipeline(in services);
-
-                pipeline.ConfigureServices(services =>
-                {
-                    services.AddSingleton(typeof(Source<>).MakeGenericType(messageType), source);
-                });
             }
             catch (Exception error)
             {
                 _logger.LogError($"Failed to build pipeline [{_options.Name}]: {error.Message}");
             }
 
-            _logger.LogInformation($"Pipeline [{pipeline!.Options.Name}] is built successfully.");
+            _logger.LogInformation($"Pipeline [{_options.Name}] is built successfully.");
 
-            return pipeline!;
-        }
-        private IPipeline CreatePipeline(Type messageType)
-        {
-            Type pipelineType = typeof(Pipeline<>).MakeGenericType(messageType);
+            IPipeline pipeline = serviceProvider.GetRequiredService<IPipeline>();
 
-            object? pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType);
-
-            if (pipeline == null)
-            {
-                throw new InvalidOperationException($"Failed to create pipeline [{_options!.Name}] instance.");
-            }
-
-            return (pipeline as IPipeline)!;
-        }
-        private Type GetSourceMessageType(Type sourceType)
-        {
-            if (sourceType.IsGenericType)
-            {
-                return ReflectionUtilities.GetTypeByNameOrFail(_options!.Source.Message);
-            }
-
-            Type? baseType = sourceType.BaseType;
-
-            if (baseType == null || baseType.GetGenericTypeDefinition() != typeof(Source<>))
-            {
-                throw new InvalidOperationException($"Pipeline source type does not inherit from DaJet.Flow.Source<T> abstract class.");
-            }
-
-            return baseType.GetGenericArguments()[0];
-        }
-        private List<object> CreatePipelineServices(IServiceProvider serviceProvider)
-        {
-            List<object> services = new();
-
-            Type serviceType = ResolveServiceType(_options!.Source.Type, _options.Source.Message);
-            object service = CreateServiceInstance(serviceProvider, serviceType, _options.Source.Options);
-            services.Add(service);
-
-            foreach (HandlerOptions handler in _options.Handlers)
-            {
-                serviceType = ResolveServiceType(handler.Type, null!);
-                service = CreateServiceInstance(serviceProvider, serviceType, handler.Options);
-                services.Add(service);
-            }
-
-            serviceType = ResolveServiceType(_options.Target.Type, _options.Target.Message);
-            service = CreateServiceInstance(serviceProvider, serviceType, _options.Target.Options);
-            services.Add(service);
-
-            return services;
+            return pipeline;
         }
         private Type ResolveServiceType(string serviceName, string messageName)
         {
@@ -138,6 +92,56 @@ namespace DaJet.Flow
 
             return serviceType;
         }
+        private Type GetSourceMessageType(Type sourceType)
+        {
+            if (sourceType.IsGenericType)
+            {
+                return sourceType.GetGenericArguments()[0];
+            }
+
+            Type? baseType = sourceType.BaseType;
+
+            if (baseType == null || baseType.GetGenericTypeDefinition() != typeof(Source<>))
+            {
+                throw new InvalidOperationException($"Pipeline source type does not inherit from DaJet.Flow.Source<T> abstract class.");
+            }
+
+            return baseType.GetGenericArguments()[0];
+        }
+        private List<object> CreatePipelineServices(Type sourceInterfaceType, PipelineServiceProvider serviceProvider)
+        {
+            object service = serviceProvider.GetRequiredService(sourceInterfaceType);
+            
+            if (service is IConfigurable configurable)
+            {
+                configurable.Configure(_options.Source.Options);
+            }
+
+            List<object> services = new()
+            {
+                service
+            };
+
+            //Type serviceType = ResolveServiceType(_options!.Source.Type, _options.Source.Message);
+            //object service = CreateServiceInstance(serviceProvider, serviceType, _options.Source.Options);
+            //services.Add(service);
+
+            Type serviceType;
+
+            foreach (HandlerOptions handler in _options.Handlers)
+            {
+                serviceType = ResolveServiceType(handler.Type, null!);
+                service = CreateServiceInstance(serviceProvider, serviceType, handler.Options);
+                services.Add(service);
+            }
+
+            serviceType = ResolveServiceType(_options.Target.Type, _options.Target.Message);
+            service = CreateServiceInstance(serviceProvider, serviceType, _options.Target.Options);
+            services.Add(service);
+
+            return services;
+        }
+        
         private object CreateServiceInstance(IServiceProvider serviceProvider, Type serviceType, Dictionary<string, string> options)
         {
             object? service = null;

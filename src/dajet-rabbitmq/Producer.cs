@@ -21,7 +21,7 @@ namespace DaJet.RabbitMQ
 
         [ActivatorUtilitiesConstructor] public Producer(IPipeline pipeline)
         {
-            _serviceProvider = pipeline.HostServices;
+            _serviceProvider = pipeline.Services;
             
             _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
         }

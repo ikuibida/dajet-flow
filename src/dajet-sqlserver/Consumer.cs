@@ -17,9 +17,11 @@ namespace DaJet.SqlServer
 
         [ActivatorUtilitiesConstructor] public Consumer(IPipeline pipeline)
         {
-            _serviceProvider = pipeline.HostServices;
+            _serviceProvider = pipeline.Services;
 
             _logger = _serviceProvider.GetRequiredService<ILogger<Consumer<TMessage>>>();
+
+            //_logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
         public void Configure(Dictionary<string, string> options)
         {
@@ -80,10 +82,8 @@ namespace DaJet.SqlServer
                         }
 
                         watch.Stop();
-                        if (consumed > 0)
-                        {
-                            _logger.LogInformation($"[SqlServer.Consumer] Consumed {consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
-                        }
+                        
+                        _logger.LogInformation($"[SqlServer.Consumer] Consumed {consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
                     }
                     while (consumed > 0 && !token.IsCancellationRequested);
                 }

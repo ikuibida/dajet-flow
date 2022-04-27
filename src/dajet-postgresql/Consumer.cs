@@ -17,7 +17,7 @@ namespace DaJet.PostgreSQL
 
         [ActivatorUtilitiesConstructor] public Consumer(IPipeline pipeline)
         {
-            _serviceProvider = pipeline.HostServices;
+            _serviceProvider = pipeline.Services;
 
             _logger = _serviceProvider.GetRequiredService<ILogger<Consumer<TMessage>>>();
         }

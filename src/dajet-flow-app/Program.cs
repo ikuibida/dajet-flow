@@ -83,6 +83,7 @@ namespace DaJet.Flow.App
 
             services.AddTransient<IMetadataService, MetadataService>(); // TODO: IHostBuilder.UseDaJetMetadataCache();
 
+            services.AddTransient<PipelineServiceProvider>();
             services.AddTransient<IPipelineBuilder, PipelineBuilder>();
 
             services.AddTransient(typeof(Pipeline<>));

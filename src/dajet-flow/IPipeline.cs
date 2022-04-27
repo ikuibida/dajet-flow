@@ -1,55 +1,46 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 
 namespace DaJet.Flow
 {
-    public interface IPipeline
+    public interface IPipeline : IDisposable
     {
         PipelineOptions Options { get; }
-        void Configure(PipelineOptions options);
-        void ConfigureServices(Action<IServiceCollection> configure);
-        Dictionary<string, object> Variables { get; }
         IServiceProvider Services { get; }
-        IServiceProvider HostServices { get; }
+        Dictionary<string, object> Context { get; }
         void Run();
         //void Suspend();
         //void Continue();
-        //void Close(); Dispose()
+        //void Close();
     }
     public sealed class Pipeline<T> : IPipeline
     {
+        private readonly IOptions<PipelineOptions> _options;
         private readonly Dictionary<string, object> _context = new();
         private readonly CancellationTokenSource _cancellation = new();
-        public Pipeline(IServiceProvider serviceProvider)
+        public Pipeline(IOptions<PipelineOptions> options, PipelineServiceProvider serviceProvider)
         {
-            HostServices = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _options = options ?? throw new ArgumentNullException(nameof(options));
+            if (_options.Value == null) throw new ArgumentNullException(nameof(options.Value));
+            Services = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
-        public PipelineOptions Options { get; private set; }
+        public PipelineOptions Options { get { return _options.Value; } }
         public IServiceProvider Services { get; private set; }
-        public IServiceProvider HostServices { get; private set; }
-        public Dictionary<string, object> Variables { get { return _context; } }
-        public void Configure(PipelineOptions options)
-        {
-            Options = options ?? throw new ArgumentNullException(nameof(options));
-
-            ServiceCollection services = new();
-            services.AddSingleton<IPipeline>(this);
-            Services = services.BuildServiceProvider();
-        }
-        public void ConfigureServices(Action<IServiceCollection> configure)
-        {
-            ServiceCollection services = new();
-            services.AddSingleton<IPipeline>(this);
-            configure(services);
-            Services = services.BuildServiceProvider();
-        }
+        public Dictionary<string, object> Context { get { return _context; } }
         public void Run()
         {
-            Source<T> source = Services.GetRequiredService<Source<T>>();
+            ISource<T> source = Services.GetRequiredService<ISource<T>>();
 
             using (source)
             {
                 source.Pump(_cancellation.Token);
             }
+        }
+        public void Dispose()
+        {
+            Context.Clear();
+
+            (Services as PipelineServiceProvider)?.Dispose();
         }
     }
 }
