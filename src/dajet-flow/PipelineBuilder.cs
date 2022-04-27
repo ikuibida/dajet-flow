@@ -1,357 +1,198 @@
-﻿using DaJet.Flow.Data;
-using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using System.Reflection;
 
 namespace DaJet.Flow
 {
-    public sealed class PipelineBuilder
+    public interface IPipelineBuilder
     {
+        IPipelineBuilder Configure(PipelineOptions options);
+        IPipeline Build();
+    }
+    public sealed class PipelineBuilder : IPipelineBuilder
+    {
+        private PipelineOptions? _options;
+
+        private readonly ILogger<PipelineBuilder> _logger;
         private readonly IServiceProvider _serviceProvider;
-        public PipelineBuilder(IServiceProvider serviceProvider)
+        public PipelineBuilder(IServiceProvider serviceProvider, ILogger<PipelineBuilder> logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
-        public IPipeline Build(PipelineOptions options)
+        public IPipelineBuilder Configure(PipelineOptions options)
         {
-            List<string> errors;
+            _options = options ?? throw new ArgumentNullException(nameof(options));
 
-            object? consumer = CreateConsumerService(options.Source, out errors);
+            return this;
+        }
+        public IPipeline Build()
+        {
+            if (_options == null)
+            {
+                throw new InvalidOperationException("Pipeline options are not provided.");
+            }
 
-            if (consumer == null) { LogErrors(in errors); return null!; }
+            Type sourceType = ReflectionUtilities.GetTypeByNameOrFail(_options!.Source.Type);
+
+            Type messageType = GetSourceMessageType(sourceType);
             
-            object? producer = CreateProducerService(options.Target, out errors);
-
-            if (producer == null) { LogErrors(in errors); return null!; }
-
-            List<object>? handlers = CreateMessageHandlers(options, out errors);
-
-            if (handlers == null) { LogErrors(in errors); return null!; }
-
-            if (!AssemblePipeline(in consumer, in handlers, in producer, out errors))
-            {
-                LogErrors(in errors); return null!;
-            }
-
-            IPipeline pipeline = CreatePipeline(options, in consumer, out errors);
-
-            if (pipeline == null) { LogErrors(in errors); return null!; }
-
-            ILogger<PipelineBuilder> logger = _serviceProvider.GetService<ILogger<PipelineBuilder>>()!;
-
-            logger.LogInformation($"Pipeline [{pipeline.Options.Name}] is built successfully.");
-
-            return pipeline;
-        }
-        private void LogErrors(in List<string> errors)
-        {
-            ILogger<PipelineBuilder> logger = _serviceProvider.GetService<ILogger<PipelineBuilder>>()!;
-
-            foreach (string error in errors)
-            {
-                logger.LogError(error);
-            }
-        }
-
-        private object CreateConsumerService(in SourceOptions options, out List<string> errors)
-        {
-            object? consumer = null;
-
-            if (options.Type == "SqlServer" || options.Type == "PostgreSQL")
-            {
-                consumer = CreateDatabaseConsumer(options, out errors);
-            }
-            else if (options.Type == "RabbitMQ" || options.Type == "ApacheKafka")
-            {
-                consumer = CreateBrokerConsumer(options, out errors);
-            }
-            else
-            {
-                errors = new List<string>() { $"Unknown source type: {options.Type}" };
-            }
-
-            return consumer!;
-        }
-        private object CreateBrokerConsumer(in SourceOptions options, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            Type? serviceType = null;
-
-            if (string.IsNullOrWhiteSpace(options.Consumer))
-            {
-                if (options.Type == "RabbitMQ")
-                {
-                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.RabbitMQ.Consumer");
-                }
-                else if (options.Type == "ApacheKafka")
-                {
-                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.ApacheKafka.Consumer");
-                }
-                else
-                {
-                    errors.Add($"Default consumer is not found: [{options.Type}]");
-                }
-            }
-            else
-            {
-                serviceType = ReflectionUtilities.GetTypeByName(options.Consumer);
-            }
-
-            if (serviceType == null)
-            {
-                if (errors.Count == 0)
-                {
-                    errors.Add($"Consumer type is not found: [{options.Type}] {options.Consumer}");
-                }
-
-                return null!;
-            }
-
-            object? consumer = null;
-
-            try
-            {
-                consumer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
-
-                if (consumer is IConfigurable configurable)
-                {
-                    configurable.Configure(options.Options);
-                }
-            }
-            catch (Exception error)
-            {
-                errors.Add($"Failed to create consumer: [{options.Type}] {error.Message}");
-            }
-
-            return consumer!;
-        }
-        private object CreateDatabaseConsumer(in SourceOptions options, out List<string> errors)
-        {
-            DatabaseConsumerBuilder builder = _serviceProvider.GetRequiredService<DatabaseConsumerBuilder>();
-
-            return builder.Build(options, out errors);
-        }
-
-        private object CreateProducerService(in TargetOptions options, out List<string> errors)
-        {
-            object? producer = null;
-
-            if (options.Type == "SqlServer" || options.Type == "PostgreSQL")
-            {
-                producer = CreateDatabaseProducer(options, out errors);
-            }
-            else if (options.Type == "RabbitMQ" || options.Type == "ApacheKafka")
-            {
-                producer = CreateBrokerProducer(options, out errors);
-            }
-            else
-            {
-                errors = new List<string>() { $"Unknown target type: {options.Type}" };
-            }
-
-            return producer!;
-        }
-        private object CreateBrokerProducer(in TargetOptions options, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            Type? serviceType = null;
-
-            if (string.IsNullOrWhiteSpace(options.Producer))
-            {
-                if (options.Type == "RabbitMQ")
-                {
-                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.RabbitMQ.Producer");
-                }
-                else if (options.Type == "ApacheKafka")
-                {
-                    serviceType = ReflectionUtilities.GetTypeByName("DaJet.ApacheKafka.Producer");
-                }
-                else
-                {
-                    errors.Add($"Default producer is not found: [{options.Type}]");
-                }
-            }
-            else
-            {
-                serviceType = ReflectionUtilities.GetTypeByName(options.Producer);
-            }
-
-            if (serviceType == null)
-            {
-                if (errors.Count == 0)
-                {
-                    errors.Add($"Producer type is not found: [{options.Type}] {options.Producer}");
-                }
-
-                return null!;
-            }
-
-            object? producer = null;
-
-            try
-            {
-                producer = ActivatorUtilities.CreateInstance(_serviceProvider, serviceType);
-
-                if (producer is IConfigurable configurable)
-                {
-                    configurable.Configure(options.Options);
-                }
-            }
-            catch (Exception error)
-            {
-                errors.Add($"Failed to create producer: [{options.Type}] {error.Message}");
-            }
-
-            return producer!;
-        }
-        private object CreateDatabaseProducer(in TargetOptions options, out List<string> errors)
-        {
-            DatabaseProducerBuilder builder = _serviceProvider.GetRequiredService<DatabaseProducerBuilder>();
-
-            return builder.Build(options, out errors);
-        }
-
-        private List<object> CreateMessageHandlers(PipelineOptions options, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            List<object> handlers = new();
-
-            foreach (HandlerOptions option in options.Handlers)
-            {
-                object? handler = CreateMessageHandler(option, in errors);
-
-                if (handler == null)
-                {
-                    return null!;
-                }
-
-                handlers.Add(handler);
-            }
+            IPipeline pipeline = CreatePipeline(messageType);
             
-            return handlers;
-        }
-        private object CreateMessageHandler(HandlerOptions options, in List<string> errors)
-        {
-            Type handlerType = ReflectionUtilities.GetTypeByName(options.Type);
-
-            if (handlerType == null)
-            {
-                errors.Add($"Handler type is not found: {options.Type}");
-
-                return null!;
-            }
-
-            object? handler = null;
+            pipeline.Configure(_options);
 
             try
             {
-                handler = ActivatorUtilities.CreateInstance(_serviceProvider, handlerType);
+                List<object> services = CreatePipelineServices(pipeline.Services);
+                
+                object source = AssemblePipeline(in services);
 
-                if (handler is IConfigurable configurable)
+                pipeline.ConfigureServices(services =>
                 {
-                    configurable.Configure(options.Options);
-                }
+                    services.AddSingleton(typeof(Source<>).MakeGenericType(messageType), source);
+                });
             }
             catch (Exception error)
             {
-                errors.Add($"Failed to create handler [{options.Type}]: {error.Message}");
+                _logger.LogError($"Failed to build pipeline [{_options.Name}]: {error.Message}");
             }
 
-            return handler!;
+            _logger.LogInformation($"Pipeline [{pipeline!.Options.Name}] is built successfully.");
+
+            return pipeline!;
         }
-
-        private bool AssemblePipeline(in object consumer, in List<object> handlers, in object producer, out List<string> errors)
+        private IPipeline CreatePipeline(Type messageType)
         {
-            errors = new List<string>();
+            Type pipelineType = typeof(Pipeline<>).MakeGenericType(messageType);
 
-            handlers.Add(producer);
+            object? pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType);
 
-            object current = consumer;
-
-            foreach (object handler in handlers)
+            if (pipeline == null)
             {
-                Type handlerType = current.GetType();
+                throw new InvalidOperationException($"Failed to create pipeline [{_options!.Name}] instance.");
+            }
 
-                MethodInfo? linkTo = handlerType.GetMethod("LinkTo");
+            return (pipeline as IPipeline)!;
+        }
+        private Type GetSourceMessageType(Type sourceType)
+        {
+            if (sourceType.IsGenericType)
+            {
+                return ReflectionUtilities.GetTypeByNameOrFail(_options!.Source.Message);
+            }
+
+            Type? baseType = sourceType.BaseType;
+
+            if (baseType == null || baseType.GetGenericTypeDefinition() != typeof(Source<>))
+            {
+                throw new InvalidOperationException($"Pipeline source type does not inherit from DaJet.Flow.Source<T> abstract class.");
+            }
+
+            return baseType.GetGenericArguments()[0];
+        }
+        private List<object> CreatePipelineServices(IServiceProvider serviceProvider)
+        {
+            List<object> services = new();
+
+            Type serviceType = ResolveServiceType(_options!.Source.Type, _options.Source.Message);
+            object service = CreateServiceInstance(serviceProvider, serviceType, _options.Source.Options);
+            services.Add(service);
+
+            foreach (HandlerOptions handler in _options.Handlers)
+            {
+                serviceType = ResolveServiceType(handler.Type, null!);
+                service = CreateServiceInstance(serviceProvider, serviceType, handler.Options);
+                services.Add(service);
+            }
+
+            serviceType = ResolveServiceType(_options.Target.Type, _options.Target.Message);
+            service = CreateServiceInstance(serviceProvider, serviceType, _options.Target.Options);
+            services.Add(service);
+
+            return services;
+        }
+        private Type ResolveServiceType(string serviceName, string messageName)
+        {
+            Type serviceType = ReflectionUtilities.GetTypeByNameOrFail(serviceName);
+
+            if (!serviceType.IsGenericType)
+            {
+                return serviceType;
+            }
+
+            if (string.IsNullOrWhiteSpace(messageName))
+            {
+                throw new InvalidOperationException($"Type parameter for generic service \"{serviceName}\" is not provided.");
+            }
+
+            Type messageType = ReflectionUtilities.GetTypeByNameOrFail(messageName);
+
+            try
+            {
+                serviceType = serviceType.MakeGenericType(messageType);
+            }
+            catch
+            {
+                throw;
+            }
+
+            return serviceType;
+        }
+        private object CreateServiceInstance(IServiceProvider serviceProvider, Type serviceType, Dictionary<string, string> options)
+        {
+            object? service = null;
+
+            try
+            {
+                service = ActivatorUtilities.CreateInstance(serviceProvider, serviceType);
+
+                if (service is IConfigurable configurable)
+                {
+                    configurable.Configure(options);
+                }
+            }
+            catch
+            {
+                throw;
+            }
+
+            if (service == null)
+            {
+                throw new InvalidOperationException($"Failed to create service of type {serviceType}.");
+            }
+
+            return service;
+        }
+        private object AssemblePipeline(in List<object> services)
+        {
+            object current = services[0];
+
+            for (int i = 1; i < services.Count; i++)
+            {
+                object service = services[i];
+
+                Type linker = current.GetType();
+
+                MethodInfo? linkTo = linker.GetMethod("LinkTo"); // ILinker<T>
 
                 if (linkTo == null)
                 {
-                    errors.Add($"Method \"LinkTo\" is not found on type {handlerType}");
-
-                    return false;
+                    throw new InvalidOperationException($"Method \"LinkTo\" is not found on type {linker}.");
                 }
 
                 try
                 {
-                    linkTo.Invoke(current, new object[] { handler });
+                    linkTo.Invoke(current, new object[] { service });
                 }
                 catch (Exception error)
                 {
-                    errors.Add($"Failed to link {current.GetType()} to {handlerType}: {error.Message}");
-
-                    return false;
+                    throw new InvalidOperationException($"Failed to link {linker} to {service.GetType()}: {error.Message}.");
                 }
 
-                current = handler;
+                current = service;
             }
             
-            return true;
-        }
-
-        private IPipeline CreatePipeline(PipelineOptions options, in object consumer, out List<string> errors)
-        {
-            errors = new List<string>();
-
-            Type consumerType = consumer.GetType();
-
-            Type? baseType = consumerType.BaseType;
-
-            if (baseType == null || baseType.GetGenericTypeDefinition() != typeof(Source<>))
-            {
-                errors.Add($"Consumer does not inherit from DaJet.Flow.Source<TMessage> abstract class.");
-
-                return null!;
-            }
-
-            Type messageType = baseType.GetGenericArguments()[0];
-
-
-            Type? pipelineType = null;
-
-            try
-            {
-                pipelineType = typeof(Pipeline<>).MakeGenericType(messageType);
-            }
-            catch (Exception error)
-            {
-                errors.Add($"Failed to create type Pipeline<{messageType}>: {error.Message}");
-            }
-
-            if (pipelineType == null)
-            {
-                return null!;
-            }
-
-            object? pipeline = null;
-
-            try
-            {
-                pipeline = ActivatorUtilities.CreateInstance(_serviceProvider, pipelineType, options, consumer);
-            }
-            catch (Exception error)
-            {
-                errors.Add($"Failed to create pipeline [{options.Name}]: {error.Message}");
-            }
-
-            if (pipeline == null)
-            {
-                return null!;
-            }
-
-            return (pipeline as IPipeline)!;
+            return services[0];
         }
     }
 }

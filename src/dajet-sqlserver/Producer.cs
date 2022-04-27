@@ -14,9 +14,9 @@ namespace DaJet.SqlServer
         private string? _connectionString;
         private IDataMapper<TMessage>? _mapper;
 
-        [ActivatorUtilitiesConstructor] public Producer(IServiceProvider serviceProvider)
+        [ActivatorUtilitiesConstructor] public Producer(IPipeline pipeline)
         {
-            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _serviceProvider = pipeline.HostServices;
 
             _logger = _serviceProvider.GetRequiredService<ILogger<Producer<TMessage>>>();
         }

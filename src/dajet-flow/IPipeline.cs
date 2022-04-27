@@ -1,29 +1,54 @@
-﻿namespace DaJet.Flow
+﻿using Microsoft.Extensions.DependencyInjection;
+
+namespace DaJet.Flow
 {
     public interface IPipeline
     {
         PipelineOptions Options { get; }
-        void Execute();
+        void Configure(PipelineOptions options);
+        void ConfigureServices(Action<IServiceCollection> configure);
+        Dictionary<string, object> Variables { get; }
+        IServiceProvider Services { get; }
+        IServiceProvider HostServices { get; }
+        void Run();
         //void Suspend();
         //void Continue();
         //void Close(); Dispose()
     }
-    public sealed class Pipeline<TSource> : IPipeline
+    public sealed class Pipeline<T> : IPipeline
     {
-        private readonly PipelineOptions _options;
-        private readonly ISource<TSource> _source;
+        private readonly Dictionary<string, object> _context = new();
         private readonly CancellationTokenSource _cancellation = new();
-        public Pipeline(PipelineOptions options, ISource<TSource> source)
+        public Pipeline(IServiceProvider serviceProvider)
         {
-            _source = source ?? throw new ArgumentNullException(nameof(source)); ;
-            _options = options ?? throw new ArgumentNullException(nameof(options));
+            HostServices = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         }
-        public PipelineOptions Options { get { return _options; } }
-        public void Execute()
+        public PipelineOptions Options { get; private set; }
+        public IServiceProvider Services { get; private set; }
+        public IServiceProvider HostServices { get; private set; }
+        public Dictionary<string, object> Variables { get { return _context; } }
+        public void Configure(PipelineOptions options)
         {
-            using (_source)
+            Options = options ?? throw new ArgumentNullException(nameof(options));
+
+            ServiceCollection services = new();
+            services.AddSingleton<IPipeline>(this);
+            Services = services.BuildServiceProvider();
+        }
+        public void ConfigureServices(Action<IServiceCollection> configure)
+        {
+            ServiceCollection services = new();
+            services.AddSingleton<IPipeline>(this);
+            configure(services);
+            Services = services.BuildServiceProvider();
+        }
+        public void Run()
+        {
+            Source<T> source = Services.GetRequiredService<Source<T>>();
+
+            using (source)
             {
-                _source.Pump(_cancellation.Token);
+                source.Pump(_cancellation.Token);
             }
         }
     }

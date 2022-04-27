@@ -20,5 +20,16 @@ namespace DaJet.Flow
 
             return null!;
         }
+        public static Type GetTypeByNameOrFail(string name)
+        {
+            Type type = GetTypeByName(name);
+
+            if (type == null)
+            {
+                throw new InvalidOperationException($"Failed to resolve type \"{name}\".");
+            }
+
+            return type;
+        }
     }
 }

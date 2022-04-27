@@ -19,9 +19,9 @@ namespace DaJet.RabbitMQ
         private IBasicProperties? _properties;
         private bool ConnectionIsBlocked = false;
 
-        [ActivatorUtilitiesConstructor] public Producer(IServiceProvider serviceProvider)
+        [ActivatorUtilitiesConstructor] public Producer(IPipeline pipeline)
         {
-            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _serviceProvider = pipeline.HostServices;
             
             _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
         }

@@ -83,10 +83,9 @@ namespace DaJet.Flow.App
 
             services.AddTransient<IMetadataService, MetadataService>(); // TODO: IHostBuilder.UseDaJetMetadataCache();
 
-            services.AddSingleton<PipelineBuilder>();
+            services.AddTransient<IPipelineBuilder, PipelineBuilder>();
+
             services.AddTransient(typeof(Pipeline<>));
-            services.AddSingleton<DatabaseConsumerBuilder>();
-            services.AddSingleton<DatabaseProducerBuilder>();
             services.AddSingleton<DataMapperOptionsBuilder>();
 
             services.AddTransient(typeof(RabbitMQ.Consumer));
@@ -114,11 +113,9 @@ namespace DaJet.Flow.App
                     continue;
                 }
 
-                services.AddSingleton<IHostedService>(serviceProvider =>
+                services.AddSingleton(serviceProvider =>
                 {
-                    PipelineBuilder builder = serviceProvider.GetRequiredService<PipelineBuilder>();
-
-                    IPipeline pipeline = builder.Build(options);
+                    IPipeline pipeline = serviceProvider.GetRequiredService<IPipelineBuilder>().Configure(options).Build();
 
                     object service = ActivatorUtilities.CreateInstance(serviceProvider, typeof(DaJetFlowService), pipeline);
                     

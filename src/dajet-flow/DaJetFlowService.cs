@@ -53,7 +53,7 @@ namespace DaJet.Flow
         }
         private void TryDoWork()
         {
-            _pipeline.Execute();
+            _pipeline.Run();
         }
     }
 }

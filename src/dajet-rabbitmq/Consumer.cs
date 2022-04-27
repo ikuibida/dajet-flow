@@ -25,9 +25,9 @@ namespace DaJet.RabbitMQ
         private int _consumed = 0;
         private Stopwatch watch = new Stopwatch();
 
-        [ActivatorUtilitiesConstructor] public Consumer(IServiceProvider serviceProvider)
+        [ActivatorUtilitiesConstructor] public Consumer(IPipeline pipeline)
         {
-            _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+            _serviceProvider = pipeline.HostServices;
             
             _logger = _serviceProvider.GetRequiredService<ILogger<Consumer>>();
         }
