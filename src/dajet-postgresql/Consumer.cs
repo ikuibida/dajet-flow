@@ -9,20 +9,20 @@ namespace DaJet.PostgreSQL
 {
     public sealed class Consumer<TMessage> : Source<TMessage>, IConfigurable where TMessage : class, IMessage, new()
     {
+        private ILogger? _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<Consumer<TMessage>> _logger;
-
+        
         private string? _connectionString;
         private IDataMapper<TMessage>? _mapper;
 
         [ActivatorUtilitiesConstructor] public Consumer(IPipeline pipeline)
         {
             _serviceProvider = pipeline.Services;
-
-            _logger = _serviceProvider.GetRequiredService<ILogger<Consumer<TMessage>>>();
         }
         public void Configure(Dictionary<string, string> options)
         {
+            _logger = _serviceProvider.GetService<ILogger<Consumer<TMessage>>>();
+
             DataMapperOptions mapperOptions = _serviceProvider
                 .GetRequiredService<DataMapperOptionsBuilder>()
                 .Build(options);
@@ -82,7 +82,7 @@ namespace DaJet.PostgreSQL
                         watch.Stop();
                         if (consumed > 0)
                         {
-                            _logger.LogInformation($"[PostgreSQL.Consumer] Consumed {consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
+                            _logger?.LogInformation($"[PostgreSQL.Consumer] Consumed {consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
                         }
                     }
                     while (consumed > 0 && !token.IsCancellationRequested);

@@ -56,10 +56,10 @@ namespace DaJet.Flow
             }
             catch (Exception error)
             {
-                _logger.LogError($"Failed to build pipeline [{_options.Name}]: {error.Message}");
+                _logger.LogError($"[{_options.Name}] failed to build pipeline: {error?.Message}");
             }
 
-            _logger.LogInformation($"Pipeline [{_options.Name}] is built successfully.");
+            _logger.LogInformation($"[{_options.Name}] is built successfully.");
 
             IPipeline pipeline = serviceProvider.GetRequiredService<IPipeline>();
 
@@ -197,6 +197,21 @@ namespace DaJet.Flow
             }
             
             return services[0];
+        }
+    }
+
+    public sealed class TestDisposable : IDisposable
+    {
+        private readonly ILogger<TestDisposable> _logger;
+        private object? resource = new object();
+        public TestDisposable(PipelineServiceProvider serviceProvider)
+        {
+            _logger = serviceProvider.GetService<ILogger<TestDisposable>>();
+        }
+        public void Dispose()
+        {
+            resource = null;
+            _logger.LogInformation("TestDisposable is disposed.");
         }
     }
 }

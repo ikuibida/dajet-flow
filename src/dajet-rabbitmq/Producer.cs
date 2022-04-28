@@ -11,8 +11,8 @@ namespace DaJet.RabbitMQ
     {
         private BrokerOptions? _options = new();
 
+        private ILogger? _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<Producer> _logger;
 
         private IModel? _channel;
         private IConnection? _connection;
@@ -22,11 +22,11 @@ namespace DaJet.RabbitMQ
         [ActivatorUtilitiesConstructor] public Producer(IPipeline pipeline)
         {
             _serviceProvider = pipeline.Services;
-            
-            _logger = _serviceProvider.GetRequiredService<ILogger<Producer>>();
         }
         public void Configure(Dictionary<string, string> options)
         {
+            _logger = _serviceProvider.GetService<ILogger<Producer>>();
+
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));

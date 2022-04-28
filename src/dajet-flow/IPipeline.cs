@@ -15,6 +15,7 @@ namespace DaJet.Flow
     }
     public sealed class Pipeline<T> : IPipeline
     {
+        private bool _disposed = false;
         private readonly IOptions<PipelineOptions> _options;
         private readonly Dictionary<string, object> _context = new();
         private readonly CancellationTokenSource _cancellation = new();
@@ -38,9 +39,26 @@ namespace DaJet.Flow
         }
         public void Dispose()
         {
-            Context.Clear();
+            if (_disposed)
+            {
+                return;
+            }
+            
+            _disposed = true; // See comment below
 
-            (Services as PipelineServiceProvider)?.Dispose();
+            try
+            {
+                Context.Clear();
+
+                // Service provider invokes Dispose method on all services
+                // in the container, including this pipeline service instance.
+
+                (Services as PipelineServiceProvider)?.Dispose();
+            }
+            catch
+            {
+                // do nothing
+            }
         }
     }
 }

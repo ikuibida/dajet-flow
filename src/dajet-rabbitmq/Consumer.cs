@@ -20,19 +20,19 @@ namespace DaJet.RabbitMQ
         private IConnection? _connection;
         private EventingBasicConsumer? _consumer;
 
+        private ILogger? _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<Consumer> _logger;
         private int _consumed = 0;
         private Stopwatch watch = new Stopwatch();
 
         [ActivatorUtilitiesConstructor] public Consumer(IPipeline pipeline)
         {
             _serviceProvider = pipeline.Services;
-            
-            _logger = _serviceProvider.GetRequiredService<ILogger<Consumer>>();
         }
         public void Configure(Dictionary<string, string> options)
         {
+            _logger = _serviceProvider.GetService<ILogger<Consumer>>();
+
             if (options == null)
             {
                 throw new ArgumentNullException(nameof(options));
@@ -165,7 +165,7 @@ namespace DaJet.RabbitMQ
                 if (_consumed == 1000)
                 {
                     watch.Stop();
-                    _logger.LogInformation($"[RabbitMQ.Consumer] Consumed {_consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
+                    _logger?.LogInformation($"[RabbitMQ.Consumer] Consumed {_consumed} messages in {watch.ElapsedMilliseconds} milliseconds.");
                     _consumed = 0;
                     watch.Reset();
                 }

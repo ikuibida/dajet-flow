@@ -8,20 +8,20 @@ namespace DaJet.PostgreSQL
 {
     public sealed class Producer<TMessage> : Target<TMessage>, IConfigurable where TMessage : class, IMessage, new()
     {
+        private ILogger? _logger;
         private readonly IServiceProvider _serviceProvider;
-        private readonly ILogger<Producer<TMessage>> _logger;
-
+        
         private string? _connectionString;
         private IDataMapper<TMessage>? _mapper;
 
         [ActivatorUtilitiesConstructor] public Producer(IPipeline pipeline)
         {
             _serviceProvider = pipeline.Services;
-
-            _logger = _serviceProvider.GetRequiredService<ILogger<Producer<TMessage>>>();
         }
         public void Configure(Dictionary<string, string> options)
         {
+            _logger = _serviceProvider.GetService<ILogger<Producer<TMessage>>>();
+
             DataMapperOptions mapperOptions = _serviceProvider
                 .GetRequiredService<DataMapperOptionsBuilder>()
                 .Build(options);

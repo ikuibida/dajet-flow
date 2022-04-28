@@ -5,14 +5,14 @@ namespace DaJet.Flow
 {
     public sealed class DaJetFlowService : BackgroundService
     {
-        private readonly IPipeline _pipeline;
-        private readonly ILogger<DaJetFlowService> _logger;
+        private readonly IPipeline? _pipeline;
+        private readonly ILogger<DaJetFlowService>? _logger;
 
         private CancellationToken _cancellationToken;
         public DaJetFlowService(IPipeline pipeline, ILogger<DaJetFlowService> logger)
         {
-            _pipeline = pipeline;
             _logger = logger;
+            _pipeline = pipeline; // FIXME: may be null if failed to build
         }
         protected override Task ExecuteAsync(CancellationToken cancellationToken)
         {
@@ -27,17 +27,25 @@ namespace DaJet.Flow
         }
         private void DoWork()
         {
-            _logger.LogInformation($"Pipeline [{_pipeline.Options.Name}] is running ...");
+            if (_pipeline == null)
+            {
+                return;
+            }
+
+            string pipelineName = _pipeline.Options?.Name ?? string.Empty;
+            int pipelineIdleTime = (_pipeline.Options == null ? 60 : _pipeline.Options.IdleTime);
+
+            _logger?.LogInformation($"[{pipelineName}] is running ...");
 
             while (!_cancellationToken.IsCancellationRequested)
             {
                 try
                 {
-                    TryDoWork();
+                    _pipeline.Run();
 
-                    _logger.LogInformation($"[{_pipeline.Options.Name}] is idle for {_pipeline.Options.IdleTime} seconds ...");
+                    _logger?.LogInformation($"[{pipelineName}] is idle for {pipelineIdleTime} seconds ...");
 
-                    Task.Delay(TimeSpan.FromSeconds(_pipeline.Options.IdleTime)).Wait(_cancellationToken);
+                    Task.Delay(TimeSpan.FromSeconds(pipelineIdleTime)).Wait(_cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -45,15 +53,20 @@ namespace DaJet.Flow
                 }
                 catch (Exception error)
                 {
-                    _logger.LogError($"{_pipeline.Options.Name}{Environment.NewLine}{error}", string.Empty);
+                    _logger?.LogError($"[{pipelineName}] exception:{Environment.NewLine}{error?.Message}", string.Empty);
                 }
             }
 
-            _logger.LogInformation($"Pipeline [{_pipeline.Options.Name}] is stopped.");
-        }
-        private void TryDoWork()
-        {
-            _pipeline.Run();
+            try
+            {
+                _pipeline.Dispose();
+            }
+            catch
+            {
+                // do nothing
+            }
+
+            _logger?.LogInformation($"[{pipelineName}] is disposed.");
         }
     }
 }
